@@ -1,0 +1,736 @@
+CREDIT LOGGER COMPLETE MASTER DEVELOPMENT PROMPT FOR GOOGLE AI STUDIO
+Version: 1.0
+
+============================================================ SHORT
+PRODUCT BRIEF
+============================================================
+
+Build CREDIT LOGGER: a complete, polished, Hindi-first personal credit
+and payment ledger. Users create a separate profile for each person, add
+multiple independent credit records to each profile, track principal and
+calendar-based interest, record credit payments and normal payments, and
+share statements/receipts. The app must work offline with persistent
+local storage and optionally synchronize with the user’s own Firebase
+project.
+
+IMPORTANT PRODUCT RULE: This is a UNIVERSAL CREDIT MANAGEMENT SYSTEM. Do
+NOT add any loan type, loan category, loan purpose, or classifications
+such as personal/business/home/vehicle loan. Do not ask the user to
+select a loan type. Use only profiles, credit numbers, credits, payments
+and notes.
+
+============================================================ 1. YOUR
+ROLE AND DELIVERY EXPECTATION
+============================================================
+
+Act as a senior full-stack engineer, financial calculation engineer,
+product designer, database architect and QA engineer.
+
+Build the actual working application, not merely a mockup or static
+design. All buttons, forms, calculations, filters, navigation,
+import/export, sharing and settings must work.
+
+Work in phases, but do not stop after the first screen: 1. Establish the
+app architecture and data model. 2. Build persistent offline storage. 3.
+Implement and test the financial calculation engine. 4. Build profiles
+and credit management. 5. Build payment processing and transaction
+history. 6. Build dashboard, calculator and reports. 7. Build
+backup/import/export and sharing. 8. Add optional Firebase sync and
+security. 9. Polish responsive design and test all flows.
+
+If a feature cannot be implemented in the current environment, explain
+the limitation and provide a real, buildable implementation path. Never
+pretend a non-working feature works.
+
+============================================================ 2. PRODUCT
+IDENTITY AND PLATFORM
+============================================================
+
+App name: CREDIT LOGGER Purpose: Personal credit, interest and payment
+management. Currency: Indian Rupee (₹). Default language: Hindi.
+Additional language: English. Date display: DD/MM/YYYY. Timezone: Use
+the device’s local timezone for displaying and interpreting user-entered
+calendar dates.
+
+Target: - Mobile-first web application. - Responsive desktop/tablet
+layout. - Installable PWA where supported. - Structure the project so it
+can be packaged as an Android APK using Capacitor and Android
+Studio/Gradle. Do not claim Google AI Studio itself has produced a
+signed APK unless an actual APK build is completed.
+
+Use a maintainable TypeScript architecture and reusable components.
+Prefer React + TypeScript if supported by the Google AI Studio
+environment.
+
+============================================================ 3. VISUAL
+DESIGN AND UX
+============================================================
+
+Use the supplied CREDIT LOGGER interface concepts as visual inspiration
+if reference images are available in the project. Create an original,
+polished interface rather than copying any image literally.
+
+Design direction: - Premium fintech / modern banking dashboard. - Deep
+navy or near-black dark theme with purple accents and restrained gold
+highlights. - Clean light theme with white surfaces and subtle neutral
+borders. - Rounded cards, clear hierarchy, readable typography, subtle
+shadows. - Smooth but restrained transitions. - Large, easy-to-tap
+mobile controls. - Accessible contrast and visible focus states. - Avoid
+clutter and excessive gradients.
+
+Themes: - Light. - Dark. - System default.
+
+Use consistent semantic colors: - Principal: blue. - Interest: orange. -
+Misradhan / total outstanding: purple. - Received payment: green. -
+Warning / overdue: red or amber.
+
+Use Indian number formatting, for example ₹1,00,000.00. Keep currency
+display consistent.
+
+============================================================ 4. APP
+NAVIGATION ============================================================
+
+Main bottom navigation on mobile: 1. Home 2. Profiles 3. Transactions 4.
+Calculator 5. Settings
+
+Desktop can use a left sidebar with the same destinations.
+
+Provide a prominent Add action with: - Add Loan Taker. - Add Credit. -
+Add Credit Payment. - Add Normal Payment.
+
+Do not create a Loan Type or Loan Category screen or field.
+
+============================================================ 5. HOME
+DASHBOARD ============================================================
+
+Show four primary summary cards: 1. Total Principal. 2. Total Accrued
+Unpaid Interest. 3. Total Misradhan / Outstanding. 4. Total Paid Amount.
+
+Definitions: - Total Principal = sum of current principal balances of
+active credits. - Total Accrued Unpaid Interest = sum of currently
+accrued unpaid interest across active credits, calculated as of the
+selected calculation date. - Total Misradhan = total principal + accrued
+unpaid interest. - Total Paid Amount = sum of all successfully recorded
+credit payments plus normal payments. Do not count deleted/reversed
+payments as received.
+
+Also show: - Number of profiles. - Active credits. - Closed credits. -
+Total credit records. - Today’s interest accrual (informational
+calculation, not a new transaction). - Total money originally advanced,
+where derivable from credit creation events. - This month’s credit
+payments. - This month’s normal payments. - Recent transactions. -
+Recent profiles. - Credits with manually assigned due dates that are
+overdue. - Quick action buttons.
+
+Dashboard filters: - Today. - This week. - This month. - This year. -
+Custom date range.
+
+Every number must be calculated from actual saved data. No hardcoded
+demo totals. If demo data is used during development, clearly separate
+it and provide a way to remove it.
+
+============================================================ 6. LOAN
+TAKER / PERSON PROFILES
+============================================================
+
+A profile represents a person who receives money.
+
+Profile fields: - Full name (required). - Phone number (optional). -
+Address (optional). - Profile photo/avatar (optional). - Notes
+(optional). - Created date (automatic).
+
+Each profile has a stable unique ID.
+
+Profile overview: - Total current principal. - Total accrued unpaid
+interest. - Total Misradhan / outstanding. - Total paid amount. - Number
+of active credits. - Number of closed credits.
+
+Profile tabs/sections: - Overview. - Credits. - Credit payments. -
+Normal payments. - Complete history. - Notes.
+
+Actions: - Add credit. - Add credit payment. - Add normal payment. -
+Edit profile. - Archive profile. - Restore archived profile. - Share
+profile statement. - Export profile JSON. - Delete profile with strong
+confirmation.
+
+Allow multiple independent credits for the same person. Each credit must
+retain its own number, principal, interest rate, start date, adjustment
+history and payments.
+
+Do not silently delete associated financial records. Prefer archive. If
+permanent deletion is offered, require explicit confirmation and explain
+the effect.
+
+============================================================ 7. ADD
+CREDIT ============================================================
+
+Create an Add Credit form opened from a selected person’s profile.
+
+Fields: - Credit number: auto-generated unique ID, editable only if
+uniqueness is validated. - Principal amount: required, positive
+amount. - Interest rate: required, non-negative percentage. - Rate
+period: Monthly or Yearly. - Interest method: Simple by default;
+Compound only if the user explicitly enables it in settings. - Start
+date: required, calendar picker plus manual date entry. - Optional note.
+
+On save: - Create a separate credit record linked to that person. -
+Store original principal and current principal. - Store the rate and
+effective start date. - Add a credit-created event to history. - Update
+profile and dashboard summaries. - Persist locally before showing
+success.
+
+No loan category, loan purpose or loan type fields.
+
+============================================================ 8.
+FINANCIAL CALCULATION RULES
+============================================================
+
+Financial correctness is the highest priority.
+
+Use exact decimal arithmetic or integer paise for money. Do not use
+ordinary binary floating-point arithmetic for financial totals. Round
+only for display and at explicitly defined settlement points.
+
+Default calculation: SIMPLE INTEREST.
+
+Support: - Monthly simple interest. - Yearly simple interest. - Optional
+compound interest only if fully implemented and clearly separated.
+
+For a monthly rate R%: One full calendar month’s interest = Principal ×
+R / 100.
+
+For a yearly rate R%: One full year interest = Principal × R / 100.
+
+For partial periods, prorate using the actual number of days in the
+relevant calendar month (monthly rate) or relevant calendar year (yearly
+rate), and document the convention.
+
+Calendar duration: - Do not assume every month has 30 days. - Respect
+actual calendar month boundaries. - Support 28/29-day February, 30-day
+and 31-day months, leap years and month-end dates. - Use a deterministic
+month-anniversary rule. If the start day does not exist in a later
+month, use that month’s final day for the anniversary; explain this rule
+in the app’s calculation details. - Treat date-only values as calendar
+dates, not UTC timestamps that can shift a day. - Reject a calculation
+date earlier than its effective start date.
+
+Example required by the product owner: Principal ₹1,000, monthly rate
+approximately 8.3333%, start 13/01/2026, calculation date 13/07/2026.
+Expected interest is approximately ₹500 and Misradhan approximately
+₹1,500 (small differences may occur if the rate is entered with fewer
+decimal places).
+
+Show a calculation breakdown: - Start date. - Calculation date. -
+Completed calendar months. - Remaining days. - Total elapsed days. -
+Rate and rate period. - Principal basis. - Interest. - Total Misradhan.
+
+Create one centralized calculation engine used by every screen. Do not
+implement different formulas in dashboard, profile and credit details.
+
+============================================================ 9. CREDIT
+DETAILS / DAILY UPDATE
+============================================================
+
+Each credit detail page must show: - Credit number. - Person name. -
+Original principal. - Current interest-bearing principal. - Interest
+rate and rate period. - Interest method. - Current effective start
+date. - Calculation date (default today). - Completed calendar months. -
+Remaining days. - Total elapsed days. - Accrued interest. - Misradhan /
+total outstanding. - Total payments against this credit. - Current
+outstanding. - Credit status. - Notes.
+
+Provide an as-of date selector so the user can inspect historical
+balances. Do not create a daily transaction just because the user opened
+the page. Interest accrues mathematically from events and dates.
+
+Actions: - Add payment. - Main credit update. - Edit details. - Close
+credit. - Reopen credit with confirmation. - Archive. - Share credit
+statement. - View complete event history.
+
+============================================================ 10. ADD
+CREDIT PAYMENT
+============================================================
+
+Form fields: - Credit number (preselected when opened from a credit). -
+Payment amount (required, positive). - Payment date (defaults to today;
+editable by calendar or manual entry). - Payment method: Cash, UPI, Bank
+Transfer, Other. - Optional note. - Payment allocation mode.
+
+Before saving, show a preview: - Balance immediately before payment. -
+Principal. - Accrued interest. - Misradhan. - Payment amount. - New
+principal / new outstanding. - Any advance amount, if applicable.
+
+Require user confirmation.
+
+After save: - Record the payment with a unique receipt number. - Update
+the credit’s event timeline. - Update profile totals. - Update
+dashboard. - Save an audit record. - Show a success message and receipt
+actions.
+
+A payment entered with a past date must be applied at that date and the
+event timeline must be recalculated from that point forward. Never apply
+a historical payment as if it happened today.
+
+============================================================ 11. PAYMENT
+ALLOCATION MODES
+============================================================
+
+Provide two clearly named modes. Let the user choose before saving each
+payment. Also allow a default mode in settings.
+
+MODE A: INTEREST FIRST - Apply payment to accrued interest first. -
+Apply any remaining amount to principal. - Track any remaining interest
+and principal separately. - Future interest accrues on the remaining
+principal only. - Do not capitalize unpaid interest unless the user
+explicitly selects a separate, clearly disclosed capitalization action.
+
+MODE B: PRINCIPAL ADJUSTMENT / MISRADHAN LESS PAYMENT This is the user’s
+specifically requested method.
+
+Example: Old principal = ₹1,000. Accrued interest = ₹500. Old Misradhan
+= ₹1,500. Payment = ₹1,000. New principal = ₹1,500 - ₹1,000 = ₹500.
+
+In this mode: - Calculate interest up to the payment date. - Old
+Misradhan = old principal + accrued interest. - New principal = old
+Misradhan - payment. - New interest-bearing principal becomes ₹500. -
+Start the next interest period from the payment date using ₹500. - Do
+not continue charging interest on the old ₹1,000 principal after the
+payment date.
+
+This mode explicitly capitalizes the unpaid interest into the new
+principal balance. Show this clearly in the payment preview and
+statement so the calculation is transparent.
+
+If payment equals Misradhan: - New principal = zero. - Mark the credit
+settled/closed after confirmation.
+
+If payment exceeds Misradhan: - Set credit principal to zero. - Record
+the excess separately as an advance/overpayment balance. - Never create
+a negative principal.
+
+For every payment preserve: - Old principal. - Interest accrued to
+payment date. - Old Misradhan. - Payment amount. - Payment date. -
+Allocation mode. - New principal. - New effective interest start date. -
+Advance amount, if any.
+
+============================================================ 12. MAIN
+CREDIT UPDATE / ADJUSTMENT
+============================================================
+
+Provide a separate Main Update action for changing a credit’s financial
+terms.
+
+Fields: - New principal amount. - New interest rate. - Rate period. -
+Effective date. - Optional note.
+
+Show a preview of the new terms.
+
+When saved: - Preserve all prior events and calculations. - Create an
+adjustment event. - Apply new principal/rate only from the effective
+date. - Recalculate subsequent periods using the event timeline. - Never
+rewrite the past using the new rate. - Show old and new values in
+history.
+
+Allow the user to inspect all previous adjustments.
+
+============================================================ 13. CREDIT
+NOTES AND AUTOMATIC PAYMENT NOTE
+============================================================
+
+After a credit payment, create a readable system-generated note such as:
+
+Payment received: ₹1,000 Payment date: 13/07/2026 Previous principal:
+₹1,000 Accrued interest: ₹500 Previous Misradhan: ₹1,500 Paid amount:
+₹1,000 Allocation mode: Principal Adjustment New principal: ₹500 New
+interest effective date: 13/07/2026
+
+The user can add an additional manual note. Do not overwrite the
+generated note when editing the manual note.
+
+============================================================ 14. NORMAL
+PAYMENT (NOT LINKED TO A CREDIT)
+============================================================
+
+Create a separate Add Normal Payment action inside a person’s profile.
+
+Fields: - Person/profile. - Amount. - Date (defaults to today;
+editable). - Payment method. - Optional note.
+
+Normal payment is not linked to any credit.
+
+IMPORTANT: A normal payment must NOT change: - Any credit principal. -
+Any credit interest. - Any credit Misradhan. - Any individual credit
+outstanding.
+
+It only increases the person’s total received/paid amount and the
+overall total paid amount, and appears in normal payment history.
+
+Clearly label it “Normal Payment — Not linked to a credit”.
+
+============================================================ 15. EDIT,
+DELETE, ARCHIVE AND AUDIT
+============================================================
+
+Allow users to edit profile information, credit details, payment notes
+and other permitted fields.
+
+Financial event edits/deletions require special handling: - Show the
+impact preview before confirmation. - Rebuild the affected credit
+timeline from the event’s effective date. - Update dependent balances
+and summaries. - Preserve an audit trail of old and new values. - Prefer
+reversal/correction events over hard deletion. - Never silently modify
+historical financial facts.
+
+Provide archive and restore options for profiles and credits.
+
+============================================================ 16.
+TRANSACTION HISTORY
+============================================================
+
+Create a global transaction list with: - Transaction ID. - Person
+name. - Credit number, if applicable. - Transaction type. - Amount. -
+Effective date. - Created timestamp. - Payment method. - Note. -
+Before/after financial snapshot when applicable.
+
+Types: - Credit Created. - Credit Payment. - Normal Payment. - Principal
+Adjustment. - Interest Rate Update. - Credit Closed. - Credit
+Reopened. - Correction / Reversal.
+
+Filters: - Person. - Credit number. - Date range. - Transaction type. -
+Payment method. - Amount range.
+
+Search by person, phone, credit number, receipt number or transaction
+ID. Sort newest/oldest and amount ascending/descending.
+
+============================================================ 17.
+CALCULATORS ============================================================
+
+Provide two tools in the Calculator section.
+
+A. CREDIT / INTEREST CALCULATOR Inputs: - Principal. - Interest rate. -
+Monthly/yearly. - Start date. - Calculation date. - Simple/compound mode
+if enabled.
+
+Results: - Completed calendar months. - Remaining days. - Total days. -
+Principal. - Interest. - Misradhan.
+
+Copy buttons: - Copy result. - Copy full calculation breakdown.
+
+Example copied text: Principal: ₹1,000 Rate: 8.3333% monthly Duration: 6
+calendar months Interest: ₹500 Misradhan: ₹1,500
+
+B. NORMAL CALCULATOR Support: - Addition. - Subtraction. -
+Multiplication. - Division. - Percentage. - Decimal. - Brackets. -
+Clear. - Backspace. - Calculation history.
+
+Important copy requirement: If the expression is 2 + 2 + 2 + 2 + 2 = 10,
+the Copy button must copy the entire expression and result, not just
+“10”.
+
+============================================================ 18. BILL,
+RECEIPT AND STATEMENT SHARING
+============================================================
+
+Use Web Share API where available and native Android share sheet when
+packaged. Provide a fallback to copy text or download a file.
+
+Share destinations should include any compatible installed app, such as
+WhatsApp, Telegram, email and SMS, through the system share sheet. Do
+not claim a specific app is installed.
+
+A. SINGLE CREDIT STATEMENT Include: - App name. - Person name. - Credit
+number. - Original principal. - Current principal. - Interest rate and
+period. - Start/effective date. - Statement date. - Calendar duration. -
+Accrued interest. - Misradhan. - Total payments. - Current
+outstanding. - Full credit payment history. - Notes.
+
+B. SINGLE PAYMENT RECEIPT Include: - Unique receipt number. - Person
+name. - Credit number or “Normal Payment”. - Amount received. - Payment
+date. - Payment method. - Previous balance. - New balance. - Allocation
+mode for credit payments. - Note.
+
+C. COMPLETE PERSON STATEMENT Include: - Person details. - All credit
+records. - Each credit’s separate balance and payment history. - Normal
+payments. - Total principal. - Total accrued unpaid interest. - Total
+Misradhan. - Total received. - Current outstanding. - Statement
+generation date.
+
+Support: - Share as text. - Copy text. - Generate PDF. - Download PDF. -
+Print.
+
+Make bills readable and professional. Clearly distinguish normal
+payments from credit-linked payments.
+
+============================================================ 19. JSON
+BACKUP, IMPORT AND EXPORT
+============================================================
+
+Export options: - All application data. - One person’s full profile. -
+One credit. - Transactions only.
+
+A full backup should include: - Profiles. - Credits. - Payments. -
+Normal payments. - Credit adjustments. - Event history. - Audit logs. -
+Notes. - Reminders. - Non-secret app preferences. - Schema version. -
+Export timestamp.
+
+Do not export PIN secrets, Firebase private credentials or
+authentication tokens.
+
+Import flow: 1. Select JSON file. 2. Validate JSON structure and schema
+version. 3. Preview counts and sample records. 4. Detect duplicate IDs.
+5. Detect missing profile/credit references. 6. Offer safe merge or
+replace-all with explicit confirmation. 7. Show import summary and
+errors. 8. Recalculate summaries and verify consistency.
+
+Preserve stable IDs and relationships. Do not silently overwrite
+existing data. Protect against malformed or excessively large files.
+
+============================================================ 20. LOCAL
+DATABASE AND OFFLINE MODE
+============================================================
+
+The app must work fully without Firebase or internet.
+
+Use persistent storage: - IndexedDB for web/PWA. - SQLite for Android
+package where appropriate.
+
+Do not use in-memory state or localStorage as the only database for
+financial records.
+
+Requirements: - Data survives app restart. - Handle storage errors
+gracefully. - Show local database status. - Use database
+migrations/schema versions. - Use atomic transactions for payment and
+adjustment operations. - Prevent duplicate saves from double taps. -
+Provide a manual backup reminder.
+
+============================================================ 21.
+OPTIONAL FIREBASE CONFIGURATION
+============================================================
+
+Firebase is optional. If the user does not enter Firebase configuration,
+the app remains fully functional in local-only mode.
+
+Create Settings > Cloud Database.
+
+Fields: - Firebase API Key. - Auth Domain. - Project ID. - Storage
+Bucket. - Messaging Sender ID. - App ID.
+
+Buttons/status: - Connect. - Test connection. - Sync now. -
+Disconnect. - Last sync time. - Sync status. - Conflict/error status.
+
+When configured: - Use Firebase Authentication for user identity. - Use
+Firestore for structured records. - Use proper per-user security
+rules. - Support offline persistence where compatible. - Sync by stable
+record IDs. - Make sync idempotent. - Detect and resolve conflicts
+safely. - Do not duplicate payments on retry. - Do not overwrite newer
+records with stale data.
+
+Security: - Firebase client API key is not a database password. - Never
+include service account private keys in client code. - Never use
+unrestricted public read/write rules. - Explain that users must
+configure Authentication and Firestore Security Rules in their own
+Firebase project. - Do not pretend that entering an API key alone
+secures the database.
+
+If Firebase is disconnected, local data must remain intact.
+
+============================================================ 22. APP
+LOCK AND SECURITY
+============================================================
+
+Provide optional four-digit PIN lock: - Set PIN. - Confirm PIN. - Change
+PIN. - Disable PIN. - Manual lock. - Auto-lock after configurable
+inactivity. - Biometric unlock if supported by the target platform.
+
+Never store PIN in plain text. Use an appropriate secure
+hashing/key-storage design. Use Android secure storage for native
+secrets where available. Explain web limitations honestly.
+
+Require confirmation for destructive actions. Avoid logging personal
+financial information. Validate all inputs and escape user-generated
+text.
+
+============================================================ 23. REPORTS
+AND ANALYTICS
+============================================================
+
+Create a Reports screen: - Daily received payments. - Monthly received
+payments. - Yearly received payments. - Credit payments vs normal
+payments. - Total principal outstanding. - Total accrued interest. -
+Total Misradhan. - Person-wise outstanding. - Credit-wise outstanding. -
+Payment collection trend.
+
+Charts must be derived from actual saved transactions and must respect
+date filters. Do not count normal payments as credit principal
+reduction.
+
+============================================================ 24.
+REMINDERS ============================================================
+
+Allow optional reminders: - Select person. - Optional credit number. -
+Reminder date/time. - Note. - Status.
+
+Allow due dates to be stored separately from interest start dates. Show
+upcoming and overdue reminders. Use local notifications when supported;
+request permission before sending notifications.
+
+============================================================ 25. SEARCH,
+FILTER AND SORT
+============================================================
+
+Global search: - Person name. - Phone number. - Credit number. - Receipt
+number. - Transaction ID.
+
+Filters: - Active credits. - Closed credits. - Archived records. - Date
+range. - Outstanding range. - Recent payments. - Highest outstanding. -
+Lowest outstanding.
+
+============================================================ 26.
+SETTINGS ============================================================
+
+Organize settings into:
+
+GENERAL: - Language. - Theme. - Currency display. - Date format.
+
+FINANCIAL: - Default rate period. - Default interest method. - Default
+payment allocation. - Calculation conventions. - Display precision.
+
+DATABASE: - Local storage status. - Firebase configuration. - Sync
+status. - Backup tools.
+
+SECURITY: - PIN. - Auto-lock. - Biometric option.
+
+DATA: - Export JSON. - Import JSON. - Export PDF. - Restore backup.
+
+NOTIFICATIONS: - Reminders. - Overdue alerts. - Backup reminders.
+
+ABOUT: - App version. - Privacy information. - Terms. - Developer
+details.
+
+============================================================ 27. DATA
+MODEL ============================================================
+
+Use a normalized, versioned database with stable IDs and relationships.
+
+PERSON / PROFILE: - id - name - phone - address - photoRef - note -
+createdAt - updatedAt - archivedAt
+
+CREDIT: - id - personId - creditNumber - originalPrincipalPaise -
+currentPrincipalPaise - interestRate - ratePeriod - interestMethod -
+startDate - status - note - createdAt - updatedAt
+
+CREDIT EVENT / LEDGER: - id - personId - creditId - eventType -
+effectiveDate - createdAt - principalBeforePaise - interestBeforePaise -
+misradhanBeforePaise - amountPaise - principalAfterPaise - rateAfter -
+ratePeriodAfter - allocationMode - advancePaise - note - reversesEventId
+(optional)
+
+PAYMENT: - id - personId - creditId (nullable for normal payment) -
+paymentType (credit or normal) - amountPaise - paymentDate -
+paymentMethod - receiptNumber - allocationMode (nullable for normal
+payment) - note - createdAt - status
+
+ADJUSTMENT: - id - creditId - effectiveDate - oldPrincipalPaise -
+newPrincipalPaise - oldRate - newRate - note - createdAt
+
+AUDIT LOG: - id - entityType - entityId - action - oldData - newData -
+timestamp
+
+REMINDER: - id - personId - creditId (optional) - reminderDate -
+reminderTime - note - status
+
+SETTINGS: - id - theme - language - financialPreferences -
+notificationPreferences - securityPreferences (never store plain PIN)
+
+Store money as integer paise wherever practical. Store date-only values
+as YYYY-MM-DD strings to avoid timezone shifts.
+
+============================================================ 28.
+REQUIRED CENTRAL CALCULATION FUNCTIONS
+============================================================
+
+Implement and unit-test reusable functions: - parseDateOnly() -
+calculateCalendarDuration() - calculateActualDaysInMonth() -
+calculateInterestForPeriod() - calculateAccruedInterestAsOfDate() -
+calculateMisradhan() - applyInterestFirstPayment() -
+applyMisradhanLessPayment() - applyPrincipalAndRateAdjustment() -
+calculateCreditBalanceAsOfDate() - calculatePersonSummary() -
+calculateDashboardSummary() - generatePaymentReceiptText() -
+generateCreditStatementText() - generateProfileStatementText()
+
+All screens must use this calculation engine.
+
+Use an ordered event ledger for each credit. Interest must be calculated
+piece-by-piece between effective-dated events. A payment or
+rate/principal adjustment changes the basis only from its effective date
+onward.
+
+Never calculate the entire past using today’s principal or today’s
+interest rate.
+
+============================================================ 29.
+ACCEPTANCE TESTS
+============================================================
+
+Test 1 — Basic credit: Create a person and a ₹1,000 credit at
+approximately 8.3333% monthly, from 13/01/2026 to 13/07/2026. Expected:
+approximately ₹500 interest and ₹1,500 Misradhan.
+
+Test 2 — User’s preferred payment method: Record ₹1,000 on 13/07/2026
+using Principal Adjustment / Misradhan Less Payment. Expected: new
+principal ₹500 and next interest period starts on 13/07/2026 using ₹500.
+
+Test 3 — Normal payment: Add ₹500 normal payment. Expected: person’s
+total received increases by ₹500; no credit principal, interest or
+Misradhan changes.
+
+Test 4 — Independent credits: Create two credits for one person.
+Expected: separate balances, rates, dates and histories.
+
+Test 5 — Past-dated payment: Add a payment with a historical effective
+date. Expected: recalculate the event timeline from that date and show
+the correct as-of balance.
+
+Test 6 — Rate update: Change the rate from an effective date. Expected:
+old periods retain the old rate; later periods use the new rate.
+
+Test 7 — Calendar: Test February 28/29, month ends, 30/31-day months and
+leap years.
+
+Test 8 — Full settlement and overpayment: Expected: no negative
+principal; excess is stored as an advance.
+
+Test 9 — Persistence: Close and reopen the app offline. Expected: all
+data remains available.
+
+Test 10 — Backup: Export JSON, import into a clean database and compare
+all records and balances.
+
+Test 11 — Sharing: Generate a single credit statement, payment receipt
+and complete profile statement.
+
+Test 12 — Edit/reversal: Edit or reverse an old payment. Expected:
+impact preview, audit record and correct recalculation.
+
+============================================================ 30.
+IMPLEMENTATION QUALITY AND FINAL DELIVERY
+============================================================
+
+Required: - Complete source code. - Modular project structure. -
+Persistent database. - Centralized calculation engine. - Working forms
+and validation. - Error and loading states. - Empty states. - Search and
+filters. - Real import/export. - Real sharing and PDF generation. -
+Optional Firebase integration. - Automated tests for calculations and
+payment events. - Setup instructions. - Android packaging instructions.
+
+Do not: - Add any loan type or loan category. - Create fake buttons. -
+Use hardcoded financial totals. - Treat normal payments as credit
+payments. - Generate duplicate interest transactions daily. -
+Recalculate old interest with new rates. - silently delete or overwrite
+financial history. - Claim Firebase sync, PDF, notifications or APK
+build works unless implemented and tested.
+
+Build a reliable, beautiful and usable CREDIT LOGGER application.
+Financial accuracy, transparent payment calculations, offline
+persistence and complete history are more important than decorative
+effects.

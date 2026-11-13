@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer ledger cover (centered inside 66dp safe zone: x=26..82, y=24..84) -->
+    <path
+        android:fillColor="#FFF59E0B"
+        android:pathData="M34,26 L74,26 C78.4,26 82,29.6 82,34 L82,74 C82,78.4 78.4,82 74,82 L34,82 C29.6,82 26,78.4 26,74 L26,34 C26,29.6 29.6,26 34,26 Z" />
+    <!-- Inner dark navy ledger page -->
+    <path
+        android:fillColor="#FF0F172A"
+        android:pathData="M36,30 L72,30 C75.3,30 78,32.7 78,36 L78,72 C78,75.3 75.3,78 72,78 L36,78 C32.7,78 30,75.3 30,72 L30,36 C30,32.7 32.7,30 36,30 Z" />
+    <!-- Spine binding notches -->
+    <path
+        android:fillColor="#FFF59E0B"
+        android:pathData="M24,37 L33,37 L33,42 L24,42 Z M24,51 L33,51 L33,56 L24,56 Z M24,65 L33,65 L33,70 L24,70 Z" />
+    <!-- Gold Rupee Symbol ₹ -->
+    <path
+        android:fillColor="#FFFBBF24"
+        android:pathData="M43,39 L65,39 L65,43 L56.5,43 C58.3,44.4 59.5,46.4 59.8,48.6 L65,48.6 L65,52.2 L59.8,52.2 C59.3,56.5 55.9,59.7 51.2,60.3 L62.5,71 L56.8,71 L45.2,60.1 L45.2,56.6 L49.6,56.6 C53.1,56.6 55.4,54.8 55.9,52.2 L43,52.2 L43,48.6 L55.8,48.6 C55.2,45.8 52.8,43.8 49.4,43 L43,43 Z" />
+    <!-- Subtle purple accent ledger bar at bottom right -->
+    <path
+        android:fillColor="#FF7C3AED"
+        android:pathData="M62,67 L66,67 L66,73 L62,73 Z M68,62 L72,62 L72,73 L68,73 Z" />
+</vector>

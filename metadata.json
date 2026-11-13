@@ -1,0 +1,6 @@
+{
+  "name": "CREDIT LOGGER",
+  "description": "Personal credit, calendar-based interest, and payment ledger with offline Room database, Hindi-first bilingual UI, PDF statements, JSON backup, and optional Firebase sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
