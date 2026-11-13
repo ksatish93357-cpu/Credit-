@@ -70,8 +70,8 @@ object ReminderScheduler {
     fun scheduleReminder(context: Context, reminder: Reminder, personName: String) {
         val date = LedgerDate.parseOrNull(reminder.reminderDate) ?: return
         val timeParts = reminder.reminderTime.split(":")
-        val hour = timeParts.getOrNull(0)?.toIntOrNull() ?: 10
-        val minute = timeParts.getOrNull(1)?.toIntOrNull() ?: 0
+        val hour = (timeParts.getOrNull(0)?.toIntOrNull() ?: 10).coerceIn(0, 23)
+        val minute = (timeParts.getOrNull(1)?.toIntOrNull() ?: 0).coerceIn(0, 59)
 
         val cal = Calendar.getInstance().apply {
             set(Calendar.YEAR, date.year)
@@ -80,6 +80,7 @@ object ReminderScheduler {
             set(Calendar.HOUR_OF_DAY, hour)
             set(Calendar.MINUTE, minute)
             set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
         }
         if (cal.timeInMillis <= System.currentTimeMillis()) return
 
@@ -96,5 +97,20 @@ object ReminderScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager.set(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pending)
+    }
+
+    fun cancelReminder(context: Context, reminderId: String) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, ReminderReceiver::class.java)
+        val pending = PendingIntent.getBroadcast(
+            context,
+            reminderId.hashCode(),
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        if (pending != null) {
+            alarmManager.cancel(pending)
+            pending.cancel()
+        }
     }
 }

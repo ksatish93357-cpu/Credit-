@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ContentCopy
@@ -29,8 +30,8 @@ import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Print
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Share
+import androidx.core.net.toUri
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
@@ -277,7 +278,6 @@ fun LedgerDateField(
                                 month = cal.get(Calendar.MONTH) + 1,
                                 day = cal.get(Calendar.DAY_OF_MONTH)
                             )
-                            textValue = picked.toDisplayString()
                             isInvalid = false
                             onDateSelected(picked)
                         }
@@ -318,7 +318,7 @@ fun PersonAvatar(
         contentAlignment = Alignment.Center
     ) {
         if (photoRef.isNotBlank()) {
-            val model = if (photoRef.startsWith("/")) File(photoRef) else Uri.parse(photoRef)
+            val model = if (photoRef.startsWith("/")) File(photoRef) else photoRef.toUri()
             AsyncImage(
                 model = model,
                 contentDescription = name,
@@ -380,7 +380,7 @@ fun QuickAddBottomSheet(
                 onClick = { onDismiss(); onAddCreditPayment() }
             )
             QuickAddActionRow(
-                icon = Icons.Default.ReceiptLong,
+                icon = Icons.AutoMirrored.Filled.ReceiptLong,
                 title = strings.addNormalPayment,
                 color = InterestOrange,
                 tag = "quick_add_normal_payment",

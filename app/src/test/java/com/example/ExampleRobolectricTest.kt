@@ -18,6 +18,8 @@ import com.example.domain.model.CreditStatus
 import com.example.domain.model.InterestMethod
 import com.example.domain.model.PaymentMethod
 import com.example.domain.model.RatePeriod
+import com.example.domain.model.ReminderStatus
+import com.example.notifications.ReminderScheduler
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -153,5 +155,56 @@ class ExampleRobolectricTest {
         assertEquals(100_000L, creditsAfterReversal.first().currentPrincipalPaise)
         val audits = repo.auditLogsFlow.first()
         assertTrue(audits.any { it.action == "REVERSE" })
+    }
+
+    @Test
+    fun `transactions only export warns on preview and reminders plus future credits work cleanly`() = runTest {
+        val person = repo.savePerson(
+            name = "अमित",
+            phone = "9999988888",
+            address = "",
+            photoRef = "",
+            note = ""
+        )
+        val futureStart = LedgerDate(2099, 1, 1)
+        val futureCredit = repo.createCredit(
+            personId = person.id,
+            creditNumber = "CL-FUTURE",
+            principalPaise = 100_000L,
+            interestRate = "2",
+            ratePeriod = RatePeriod.MONTHLY,
+            interestMethod = InterestMethod.SIMPLE,
+            startDate = futureStart,
+            dueDate = null,
+            note = "Future"
+        )
+        repo.applyMainCreditUpdate(
+            creditId = futureCredit.id,
+            newPrincipalPaise = 150_000L,
+            newRate = "3",
+            newRatePeriod = RatePeriod.MONTHLY,
+            effectiveDate = LedgerDate(2099, 2, 1),
+            note = "Top up"
+        )
+        val updated = repo.creditsFlow.first().first { it.id == futureCredit.id }
+        assertEquals(150_000L, updated.currentPrincipalPaise)
+        assertEquals("3", updated.interestRate)
+
+        val txJson = backupManager.exportJson(ExportScope.TRANSACTIONS_ONLY)
+        val preview = backupManager.parseAndPreviewImport(txJson)
+        assertTrue(preview.missingReferenceWarnings.isNotEmpty())
+
+        val reminder = repo.saveReminder(
+            personId = person.id,
+            creditId = futureCredit.id,
+            reminderDate = futureStart,
+            reminderTime = "25:99",
+            note = "Follow up"
+        )
+        ReminderScheduler.scheduleReminder(context, reminder, person.name)
+        repo.updateReminderStatus(reminder.id, ReminderStatus.COMPLETED)
+        ReminderScheduler.cancelReminder(context, reminder.id)
+        repo.deleteReminder(reminder.id)
+        assertTrue(repo.remindersFlow.first().isEmpty())
     }
 }

@@ -166,9 +166,24 @@ fun AddCreditPaymentScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                if (availableCredits.isEmpty()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "No active credits available. Please create a credit record first.",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+                }
+
                 ExposedDropdownMenuBox(
                     expanded = creditDropdownOpen,
-                    onExpandedChange = { creditDropdownOpen = it }
+                    onExpandedChange = { if (availableCredits.isNotEmpty()) creditDropdownOpen = it }
                 ) {
                     val labelText = selectedCredit?.let { c ->
                         val pName = state.persons.firstOrNull { it.id == c.personId }?.name ?: ""
@@ -178,6 +193,7 @@ fun AddCreditPaymentScreen(
                         value = labelText,
                         onValueChange = {},
                         readOnly = true,
+                        enabled = availableCredits.isNotEmpty(),
                         label = { Text(strings.creditNumber) },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = creditDropdownOpen) },
                         modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -192,6 +208,11 @@ fun AddCreditPaymentScreen(
                                 text = { Text("${c.creditNumber} — $pName") },
                                 onClick = {
                                     selectedCreditId = c.id
+                                    val newStart = InterestEngine.parseDateOnly(c.startDate)
+                                    if (paymentDate < newStart) {
+                                        paymentDate = newStart
+                                    }
+                                    validationError = null
                                     creditDropdownOpen = false
                                 }
                             )
@@ -314,6 +335,7 @@ fun AddCreditPaymentScreen(
                             }
                         }
                     },
+                    enabled = availableCredits.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth().height(52.dp).testTag("review_credit_payment_btn"),
                     shape = RoundedCornerShape(14.dp)
                 ) {
@@ -460,15 +482,31 @@ fun AddNormalPaymentScreen(
                     }
                 }
 
+                if (activePersons.isEmpty()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "No active profiles found. Please add a profile first.",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+                }
+
                 ExposedDropdownMenuBox(
                     expanded = personExpanded,
-                    onExpandedChange = { personExpanded = it }
+                    onExpandedChange = { if (activePersons.isNotEmpty()) personExpanded = it }
                 ) {
                     val personName = activePersons.firstOrNull { it.id == selectedPersonId }?.name ?: strings.selectPerson
                     OutlinedTextField(
                         value = personName,
                         onValueChange = {},
                         readOnly = true,
+                        enabled = activePersons.isNotEmpty(),
                         label = { Text(strings.selectPerson) },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = personExpanded) },
                         modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -531,6 +569,7 @@ fun AddNormalPaymentScreen(
                             else -> onSaveNormalPayment(selectedPersonId, paise, paymentDate, method, note)
                         }
                     },
+                    enabled = activePersons.isNotEmpty(),
                     colors = ButtonDefaults.buttonColors(containerColor = InterestOrange),
                     modifier = Modifier.fillMaxWidth().height(52.dp).testTag("save_normal_payment_btn"),
                     shape = RoundedCornerShape(14.dp)

@@ -27,6 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Message
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
@@ -35,17 +38,15 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Percent
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Sort
+import androidx.core.net.toUri
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -158,7 +159,7 @@ fun ProfilesListScreen(
                             onClick = { showSortMenu = true },
                             modifier = Modifier.minimumInteractiveComponentSize().testTag("profiles_sort_btn")
                         ) {
-                            Icon(Icons.Default.Sort, contentDescription = "Sort")
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
                         }
                         DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                             DropdownMenuItem(text = { Text("Highest Outstanding") }, onClick = { sortOption = ProfileSortOption.HIGHEST_OUTSTANDING; showSortMenu = false })
@@ -388,17 +389,17 @@ fun ProfileDetailScreen(
                         if (person.phone.isNotBlank()) {
                             IconButton(onClick = {
                                 runCatching {
-                                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${person.phone}")))
+                                    context.startActivity(Intent(Intent.ACTION_DIAL, "tel:${person.phone}".toUri()))
                                 }
                             }) {
                                 Icon(Icons.Default.Call, contentDescription = "Call", tint = PaidGreen)
                             }
                             IconButton(onClick = {
                                 runCatching {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("sms:${person.phone}")))
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, "sms:${person.phone}".toUri()))
                                 }
                             }) {
-                                Icon(Icons.Default.Message, contentDescription = "SMS", tint = PrincipalBlue)
+                                Icon(Icons.AutoMirrored.Filled.Message, contentDescription = "SMS", tint = PrincipalBlue)
                             }
                         }
                     }
@@ -658,7 +659,7 @@ fun ProfileDetailScreen(
                             modifier = Modifier.weight(1f).testTag("profile_add_normal_payment_btn"),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                         ) {
-                            Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.size(4.dp))
                             Text(strings.normalPaymentsLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }

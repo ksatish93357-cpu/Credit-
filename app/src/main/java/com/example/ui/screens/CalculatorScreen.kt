@@ -344,7 +344,7 @@ private fun NormalCalculatorPane(
         OutlinedButton(
             onClick = {
                 val textToCopy = when {
-                    lastEvaluatedFull.isNotBlank() && expression.isNotBlank() && lastEvaluatedFull.startsWith(expression) -> lastEvaluatedFull
+                    lastEvaluatedFull.isNotBlank() && expression.isNotBlank() && lastEvaluatedFull.startsWith("$expression = ") -> lastEvaluatedFull
                     expression.isNotBlank() -> {
                         val ans = ExpressionEvaluator.evaluate(expression).getOrDefault(currentResult)
                         "$expression = $ans"

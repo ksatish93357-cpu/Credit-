@@ -253,4 +253,45 @@ class FinancialEngineAcceptanceTest {
         assertEquals("115", ExpressionEvaluator.evaluate("(1 + 15%) * 100").getOrThrow())
         assertEquals("110", ExpressionEvaluator.evaluate("100 + (100 * 10%)").getOrThrow())
     }
+
+    @Test
+    fun `future start date credit evaluates cleanly on start date and ignores reversed adjustments`() {
+        val credit = Credit(
+            id = "c_future",
+            personId = "p1",
+            creditNumber = "CL-999",
+            originalPrincipalPaise = 200_000L,
+            currentPrincipalPaise = 200_000L,
+            interestRate = "3",
+            ratePeriod = RatePeriod.MONTHLY,
+            startDate = "2099-01-01",
+            createdAt = 1L,
+            updatedAt = 1L
+        )
+        val reversedAdj = CreditEvent(
+            id = "adj_rev",
+            personId = "p1",
+            creditId = "c_future",
+            eventType = CreditEventType.PRINCIPAL_ADJUSTMENT,
+            effectiveDate = "2099-02-01",
+            createdAt = 2L,
+            updatedAt = 2L,
+            principalBeforePaise = 200_000L,
+            interestBeforePaise = 6_000L,
+            misradhanBeforePaise = 206_000L,
+            amountPaise = 300_000L,
+            principalAfterPaise = 300_000L,
+            rateAfter = "5",
+            ratePeriodAfter = RatePeriod.MONTHLY,
+            isReversed = true
+        )
+        val snapStart = InterestEngine.calculateCreditBalanceAsOfDate(credit, listOf(reversedAdj), LedgerDate(2099, 1, 1))
+        assertEquals(200_000L, snapStart.currentPrincipalPaise)
+        assertEquals(0L, snapStart.accruedUnpaidInterestPaise)
+
+        val snapAfter = InterestEngine.calculateCreditBalanceAsOfDate(credit, listOf(reversedAdj), LedgerDate(2099, 3, 1))
+        assertEquals(200_000L, snapAfter.currentPrincipalPaise)
+        assertEquals("3", snapAfter.activeRate)
+        assertEquals(12_000L, snapAfter.accruedUnpaidInterestPaise)
+    }
 }

@@ -21,12 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -167,18 +167,28 @@ fun TransactionsScreen(
             TopAppBar(
                 title = { Text("${strings.navTransactions} (${filteredEvents.size})") },
                 actions = {
+                    val hasActiveFilters = selectedPersonFilter != null ||
+                        selectedMethodFilter != null ||
+                        dateFrom != null ||
+                        dateTo != null ||
+                        minRupees.isNotBlank() ||
+                        maxRupees.isNotBlank()
                     IconButton(
                         onClick = { showFilterDialog = true },
                         modifier = Modifier.minimumInteractiveComponentSize().testTag("transactions_filter_btn")
                     ) {
-                        Icon(Icons.Default.FilterList, contentDescription = "Filter")
+                        Icon(
+                            Icons.Default.FilterList,
+                            contentDescription = "Filter",
+                            tint = if (hasActiveFilters) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
                     }
                     Box {
                         IconButton(
                             onClick = { showSortMenu = true },
                             modifier = Modifier.minimumInteractiveComponentSize().testTag("transactions_sort_btn")
                         ) {
-                            Icon(Icons.Default.Sort, contentDescription = "Sort")
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
                         }
                         DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                             DropdownMenuItem(text = { Text("Newest First") }, onClick = { sortOption = TransactionSortOption.NEWEST_FIRST; showSortMenu = false })
@@ -332,7 +342,7 @@ fun TransactionsScreen(
                             selectedEventForDetail = null
                             onShareReceipt(linkedPayment)
                         }) {
-                            Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.size(4.dp))
                             Text(strings.share)
                         }
@@ -350,7 +360,7 @@ fun TransactionsScreen(
                             selectedEventForDetail = null
                             reverseTarget = ev
                         }) {
-                            Icon(Icons.Default.Undo, contentDescription = null, tint = OverdueRed, modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, tint = OverdueRed, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.size(4.dp))
                             Text(strings.reverseEvent, color = OverdueRed)
                         }
@@ -469,6 +479,23 @@ fun TransactionsScreen(
                         FilterChip(selected = selectedMethodFilter == null, onClick = { selectedMethodFilter = null }, label = { Text("All") })
                         PaymentMethod.entries.forEach { pm ->
                             FilterChip(selected = selectedMethodFilter == pm, onClick = { selectedMethodFilter = pm }, label = { Text(pm.name) })
+                        }
+                    }
+                    if (state.persons.isNotEmpty()) {
+                        Text(strings.navProfiles, style = MaterialTheme.typography.labelMedium)
+                        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(
+                                selected = selectedPersonFilter == null,
+                                onClick = { selectedPersonFilter = null },
+                                label = { Text("All") }
+                            )
+                            state.persons.forEach { person ->
+                                FilterChip(
+                                    selected = selectedPersonFilter == person.id,
+                                    onClick = { selectedPersonFilter = if (selectedPersonFilter == person.id) null else person.id },
+                                    label = { Text(person.name) }
+                                )
+                            }
                         }
                     }
                 }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
@@ -30,7 +31,6 @@ import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -158,15 +158,31 @@ fun AddCreditScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                if (activePersons.isEmpty()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "No active profiles found. Please add a profile before creating a credit.",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+                }
+
                 ExposedDropdownMenuBox(
                     expanded = personExpanded,
-                    onExpandedChange = { personExpanded = it }
+                    onExpandedChange = { if (activePersons.isNotEmpty()) personExpanded = it }
                 ) {
                     val selectedPersonName = activePersons.firstOrNull { it.id == selectedPersonId }?.name ?: strings.selectPerson
                     OutlinedTextField(
                         value = selectedPersonName,
                         onValueChange = {},
                         readOnly = true,
+                        enabled = activePersons.isNotEmpty(),
                         label = { Text(strings.selectPerson) },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = personExpanded) },
                         modifier = Modifier
@@ -291,6 +307,7 @@ fun AddCreditScreen(
                             creditNumber.isBlank() || !isCreditNumberUnique -> validationError = "Unique credit number required"
                             paise == null || paise <= 0L -> validationError = "Enter positive principal amount"
                             rateBd == null || rateBd < java.math.BigDecimal.ZERO -> validationError = "Enter non-negative interest rate"
+                            dueDate != null && dueDate!! < startDate -> validationError = "Due date cannot be before start date"
                             else -> {
                                 validationError = null
                                 onSaveCredit(
@@ -307,6 +324,7 @@ fun AddCreditScreen(
                             }
                         }
                     },
+                    enabled = activePersons.isNotEmpty(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
@@ -557,7 +575,7 @@ fun CreditDetailScreen(
                             if (!ev.isReversed && ev.eventType != CreditEventType.CREDIT_CREATED && ev.eventType != CreditEventType.CORRECTION_REVERSAL) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                     TextButton(onClick = { eventToReverse = ev }) {
-                                        Icon(Icons.Default.Undo, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.size(4.dp))
                                         Text(strings.reverseEvent)
                                     }
@@ -685,7 +703,26 @@ fun MainCreditUpdateScreen(
 ) {
     BackHandler { onBack() }
     val strings = LocalAppStrings.current
-    val credit = state.credits.firstOrNull { it.id == creditId } ?: return
+    val credit = state.credits.firstOrNull { it.id == creditId }
+    if (credit == null) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(strings.mainCreditUpdate) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                )
+            }
+        ) { innerPadding ->
+            Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                Text(strings.noDataYet)
+            }
+        }
+        return
+    }
     val creditEvents = state.events.filter { it.creditId == creditId }
     val creditStart = InterestEngine.parseDateOnly(credit.startDate)
     val fmt = { p: Long -> IndianNumberFormatter.formatCurrency(p, state.settings.displayDecimals, trimTrailingZerosWhenWhole = true) }
@@ -697,13 +734,26 @@ fun MainCreditUpdateScreen(
         }.getOrNull()
     }
 
-    var newPrincipalText by remember(previewSnapshot) {
+    var principalEdited by remember { mutableStateOf(false) }
+    var rateEdited by remember { mutableStateOf(false) }
+    var newPrincipalText by remember {
         mutableStateOf(
             IndianNumberFormatter.paiseToPlainRupeesString(previewSnapshot?.currentPrincipalPaise ?: credit.currentPrincipalPaise)
         )
     }
-    var newRateText by remember { mutableStateOf(credit.interestRate) }
-    var newRatePeriod by remember { mutableStateOf(credit.ratePeriod) }
+    var newRateText by remember { mutableStateOf(previewSnapshot?.activeRate ?: credit.interestRate) }
+    var newRatePeriod by remember { mutableStateOf(previewSnapshot?.activeRatePeriod ?: credit.ratePeriod) }
+    LaunchedEffect(previewSnapshot) {
+        if (previewSnapshot != null) {
+            if (!principalEdited) {
+                newPrincipalText = IndianNumberFormatter.paiseToPlainRupeesString(previewSnapshot.currentPrincipalPaise)
+            }
+            if (!rateEdited) {
+                newRateText = previewSnapshot.activeRate
+                newRatePeriod = previewSnapshot.activeRatePeriod
+            }
+        }
+    }
     var note by remember { mutableStateOf("") }
     var errorText by remember { mutableStateOf<String?>(null) }
 
@@ -746,7 +796,10 @@ fun MainCreditUpdateScreen(
 
                 OutlinedTextField(
                     value = newPrincipalText,
-                    onValueChange = { newPrincipalText = it },
+                    onValueChange = {
+                        principalEdited = true
+                        newPrincipalText = it
+                    },
                     label = { Text("New Principal (₹)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -755,7 +808,10 @@ fun MainCreditUpdateScreen(
 
                 OutlinedTextField(
                     value = newRateText,
-                    onValueChange = { newRateText = it },
+                    onValueChange = {
+                        rateEdited = true
+                        newRateText = it
+                    },
                     label = { Text("New Interest Rate (%)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -765,12 +821,18 @@ fun MainCreditUpdateScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     FilterChip(
                         selected = newRatePeriod == RatePeriod.MONTHLY,
-                        onClick = { newRatePeriod = RatePeriod.MONTHLY },
+                        onClick = {
+                            rateEdited = true
+                            newRatePeriod = RatePeriod.MONTHLY
+                        },
                         label = { Text(strings.monthly) }
                     )
                     FilterChip(
                         selected = newRatePeriod == RatePeriod.YEARLY,
-                        onClick = { newRatePeriod = RatePeriod.YEARLY },
+                        onClick = {
+                            rateEdited = true
+                            newRatePeriod = RatePeriod.YEARLY
+                        },
                         label = { Text(strings.yearly) }
                     )
                 }

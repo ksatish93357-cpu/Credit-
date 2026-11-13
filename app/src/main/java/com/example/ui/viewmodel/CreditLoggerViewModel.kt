@@ -3,6 +3,7 @@ package com.example.ui.viewmodel
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.export.ExportScope
@@ -109,6 +110,7 @@ class CreditLoggerViewModel(application: Application) : AndroidViewModel(applica
     private val isLockedFlow = MutableStateFlow(false)
     private val hasCheckedInitialLock = MutableStateFlow(false)
     private val isBusyFlow = MutableStateFlow(false)
+    private var activeTasksCount = 0
     private val toastMessageFlow = MutableStateFlow<String?>(null)
     private val errorMessageFlow = MutableStateFlow<String?>(null)
     private val dbSizeFlow = MutableStateFlow(0L)
@@ -564,13 +566,21 @@ class CreditLoggerViewModel(application: Application) : AndroidViewModel(applica
 
     fun updateReminderStatus(reminderId: String, status: ReminderStatus) {
         viewModelScope.launch {
-            runSafe { repository.updateReminderStatus(reminderId, status) }
+            runSafe {
+                repository.updateReminderStatus(reminderId, status)
+                if (status == ReminderStatus.COMPLETED) {
+                    ReminderScheduler.cancelReminder(appContext, reminderId)
+                }
+            }
         }
     }
 
     fun deleteReminder(reminderId: String) {
         viewModelScope.launch {
-            runSafe { repository.deleteReminder(reminderId) }
+            runSafe {
+                ReminderScheduler.cancelReminder(appContext, reminderId)
+                repository.deleteReminder(reminderId)
+            }
         }
     }
 
@@ -769,7 +779,7 @@ class CreditLoggerViewModel(application: Application) : AndroidViewModel(applica
         if (uriString.startsWith("/")) return uriString
         return withContext(Dispatchers.IO) {
             runCatching {
-                val uri = Uri.parse(uriString)
+                val uri = uriString.toUri()
                 val photosDir = File(appContext.filesDir, "photos").apply { mkdirs() }
                 val dest = File(photosDir, "${UUID.randomUUID()}.jpg")
                 appContext.contentResolver.openInputStream(uri)?.use { input ->
@@ -781,14 +791,15 @@ class CreditLoggerViewModel(application: Application) : AndroidViewModel(applica
     }
 
     private suspend fun runSafe(block: suspend () -> Unit) {
-        if (isBusyFlow.value) return
+        activeTasksCount++
         isBusyFlow.value = true
         try {
             block()
         } catch (e: Exception) {
             errorMessageFlow.value = e.message ?: "Unexpected error"
         } finally {
-            isBusyFlow.value = false
+            activeTasksCount = (activeTasksCount - 1).coerceAtLeast(0)
+            isBusyFlow.value = activeTasksCount > 0
         }
     }
 

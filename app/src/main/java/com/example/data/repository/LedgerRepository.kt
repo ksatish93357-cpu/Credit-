@@ -700,10 +700,11 @@ class LedgerRepository(
         val credit = db.creditDao().getById(creditId)?.toDomain() ?: return
         val events = db.creditEventDao().getByCreditId(creditId).map { it.toDomain() }
         val today = LedgerDate.todayLocal()
+        val startDate = LedgerDate.parseOrNull(credit.startDate) ?: today
         val maxEventDate = events
             .mapNotNull { LedgerDate.parseOrNull(it.effectiveDate) }
             .maxOrNull()
-        val replayEndDate = if (maxEventDate != null && maxEventDate > today) maxEventDate else today
+        val replayEndDate = maxOf(today, startDate, maxEventDate ?: today)
 
         val snapshot = InterestEngine.calculateCreditBalanceAsOfDate(credit, events, replayEndDate)
 

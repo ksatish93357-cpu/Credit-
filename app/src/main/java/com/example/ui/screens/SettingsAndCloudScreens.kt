@@ -274,7 +274,7 @@ fun SettingsScreen(
                                     tint = if (state.firebaseConfig.isConnected) PaidGreen else PrincipalBlue
                                 )
                             },
-                            trailingContent = { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(0.dp)) },
+                            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
                             modifier = Modifier.clickable(onClick = onOpenCloudDatabase).testTag("settings_cloud_db_btn")
                         )
                     }
@@ -527,8 +527,10 @@ fun SettingsScreen(
                 }
             },
             confirmButton = {
+                val isTransactionsOnly = p.bundle.exportScope == ExportScope.TRANSACTIONS_ONLY.name
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
+                        enabled = !isTransactionsOnly,
                         onClick = { onConfirmImport(p, ImportMode.REPLACE_ALL) },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = OverdueRed)
                     ) { Text(strings.replaceAll) }

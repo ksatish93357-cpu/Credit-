@@ -27,6 +27,7 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.PersistentCacheSettings
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.tasks.await
 
@@ -76,7 +77,7 @@ class FirebaseSyncManager(
         val auth = FirebaseAuth.getInstance(app)
         val firestore = FirebaseFirestore.getInstance(app).apply {
             firestoreSettings = FirebaseFirestoreSettings.Builder()
-                .setPersistenceEnabled(true)
+                .setLocalCacheSettings(PersistentCacheSettings.newBuilder().build())
                 .build()
         }
 
@@ -275,8 +276,9 @@ class FirebaseSyncManager(
             val today = LedgerDate.todayLocal()
             for (c in db.creditDao().getAll().map { it.toDomain() }) {
                 val evs = db.creditEventDao().getByCreditId(c.id).map { it.toDomain() }
+                val startD = LedgerDate.parseOrNull(c.startDate) ?: today
                 val maxD = evs.mapNotNull { LedgerDate.parseOrNull(it.effectiveDate) }.maxOrNull()
-                val asOf = if (maxD != null && maxD > today) maxD else today
+                val asOf = maxOf(today, startD, maxD ?: today)
                 val snap = InterestEngine.calculateCreditBalanceAsOfDate(c, evs, asOf)
                 db.creditDao().upsert(
                     c.copy(
@@ -302,103 +304,82 @@ class FirebaseSyncManager(
         val remoteEventMap = remoteEvents.associateBy { it.id }
         val remoteReminderMap = remoteReminders.associateBy { it.id }
 
-        val batch = firestore.batch()
-        var pushedCount = 0
+        val writeOps = mutableListOf<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>>>()
 
         mergedPersons.forEach { p ->
             val rp = remotePersonMap[p.id]
             if (rp == null || p.updatedAt > rp.updatedAt) {
-                batch.set(
-                    userRoot.collection("persons").document(p.id),
-                    mapOf(
-                        "name" to p.name, "phone" to p.phone, "address" to p.address,
-                        "photoRef" to p.photoRef, "note" to p.note, "createdAt" to p.createdAt,
-                        "updatedAt" to p.updatedAt, "archivedAt" to p.archivedAt
-                    ),
-                    SetOptions.merge()
+                writeOps += userRoot.collection("persons").document(p.id) to mapOf(
+                    "name" to p.name, "phone" to p.phone, "address" to p.address,
+                    "photoRef" to p.photoRef, "note" to p.note, "createdAt" to p.createdAt,
+                    "updatedAt" to p.updatedAt, "archivedAt" to p.archivedAt
                 )
-                pushedCount++
             }
         }
         mergedCredits.forEach { c ->
             val rc = remoteCreditMap[c.id]
             if (rc == null || c.updatedAt > rc.updatedAt) {
-                batch.set(
-                    userRoot.collection("credits").document(c.id),
-                    mapOf(
-                        "personId" to c.personId, "creditNumber" to c.creditNumber,
-                        "originalPrincipalPaise" to c.originalPrincipalPaise,
-                        "currentPrincipalPaise" to c.currentPrincipalPaise,
-                        "interestRate" to c.interestRate, "ratePeriod" to c.ratePeriod.name,
-                        "interestMethod" to c.interestMethod.name, "startDate" to c.startDate,
-                        "dueDate" to c.dueDate, "status" to c.status.name, "note" to c.note,
-                        "createdAt" to c.createdAt, "updatedAt" to c.updatedAt, "archivedAt" to c.archivedAt
-                    ),
-                    SetOptions.merge()
+                writeOps += userRoot.collection("credits").document(c.id) to mapOf(
+                    "personId" to c.personId, "creditNumber" to c.creditNumber,
+                    "originalPrincipalPaise" to c.originalPrincipalPaise,
+                    "currentPrincipalPaise" to c.currentPrincipalPaise,
+                    "interestRate" to c.interestRate, "ratePeriod" to c.ratePeriod.name,
+                    "interestMethod" to c.interestMethod.name, "startDate" to c.startDate,
+                    "dueDate" to c.dueDate, "status" to c.status.name, "note" to c.note,
+                    "createdAt" to c.createdAt, "updatedAt" to c.updatedAt, "archivedAt" to c.archivedAt
                 )
-                pushedCount++
             }
         }
         mergedPayments.forEach { p ->
             val rpay = remotePaymentMap[p.id]
             if (rpay == null || p.updatedAt > rpay.updatedAt) {
-                batch.set(
-                    userRoot.collection("payments").document(p.id),
-                    mapOf(
-                        "personId" to p.personId, "creditId" to p.creditId,
-                        "paymentType" to p.paymentType.name, "amountPaise" to p.amountPaise,
-                        "paymentDate" to p.paymentDate, "paymentMethod" to p.paymentMethod.name,
-                        "receiptNumber" to p.receiptNumber, "allocationMode" to p.allocationMode?.name,
-                        "systemNote" to p.systemNote, "note" to p.note, "createdAt" to p.createdAt,
-                        "updatedAt" to p.updatedAt, "status" to p.status, "reversesPaymentId" to p.reversesPaymentId
-                    ),
-                    SetOptions.merge()
+                writeOps += userRoot.collection("payments").document(p.id) to mapOf(
+                    "personId" to p.personId, "creditId" to p.creditId,
+                    "paymentType" to p.paymentType.name, "amountPaise" to p.amountPaise,
+                    "paymentDate" to p.paymentDate, "paymentMethod" to p.paymentMethod.name,
+                    "receiptNumber" to p.receiptNumber, "allocationMode" to p.allocationMode?.name,
+                    "systemNote" to p.systemNote, "note" to p.note, "createdAt" to p.createdAt,
+                    "updatedAt" to p.updatedAt, "status" to p.status, "reversesPaymentId" to p.reversesPaymentId
                 )
-                pushedCount++
             }
         }
         mergedEvents.forEach { e ->
             val rev = remoteEventMap[e.id]
             if (rev == null || e.updatedAt > rev.updatedAt) {
-                batch.set(
-                    userRoot.collection("events").document(e.id),
-                    mapOf(
-                        "personId" to e.personId, "creditId" to e.creditId,
-                        "eventType" to e.eventType.name, "effectiveDate" to e.effectiveDate,
-                        "createdAt" to e.createdAt, "updatedAt" to e.updatedAt,
-                        "principalBeforePaise" to e.principalBeforePaise,
-                        "interestBeforePaise" to e.interestBeforePaise,
-                        "misradhanBeforePaise" to e.misradhanBeforePaise,
-                        "amountPaise" to e.amountPaise, "principalAfterPaise" to e.principalAfterPaise,
-                        "interestAfterPaise" to e.interestAfterPaise, "rateAfter" to e.rateAfter,
-                        "ratePeriodAfter" to e.ratePeriodAfter.name,
-                        "allocationMode" to e.allocationMode?.name, "paymentMethod" to e.paymentMethod?.name,
-                        "receiptNumber" to e.receiptNumber, "advancePaise" to e.advancePaise,
-                        "systemNote" to e.systemNote, "note" to e.note,
-                        "reversesEventId" to e.reversesEventId, "isReversed" to e.isReversed
-                    ),
-                    SetOptions.merge()
+                writeOps += userRoot.collection("events").document(e.id) to mapOf(
+                    "personId" to e.personId, "creditId" to e.creditId,
+                    "eventType" to e.eventType.name, "effectiveDate" to e.effectiveDate,
+                    "createdAt" to e.createdAt, "updatedAt" to e.updatedAt,
+                    "principalBeforePaise" to e.principalBeforePaise,
+                    "interestBeforePaise" to e.interestBeforePaise,
+                    "misradhanBeforePaise" to e.misradhanBeforePaise,
+                    "amountPaise" to e.amountPaise, "principalAfterPaise" to e.principalAfterPaise,
+                    "interestAfterPaise" to e.interestAfterPaise, "rateAfter" to e.rateAfter,
+                    "ratePeriodAfter" to e.ratePeriodAfter.name,
+                    "allocationMode" to e.allocationMode?.name, "paymentMethod" to e.paymentMethod?.name,
+                    "receiptNumber" to e.receiptNumber, "advancePaise" to e.advancePaise,
+                    "systemNote" to e.systemNote, "note" to e.note,
+                    "reversesEventId" to e.reversesEventId, "isReversed" to e.isReversed
                 )
-                pushedCount++
             }
         }
         mergedReminders.forEach { r ->
             val rr = remoteReminderMap[r.id]
             if (rr == null || r.updatedAt > rr.updatedAt) {
-                batch.set(
-                    userRoot.collection("reminders").document(r.id),
-                    mapOf(
-                        "personId" to r.personId, "creditId" to r.creditId,
-                        "reminderDate" to r.reminderDate, "reminderTime" to r.reminderTime,
-                        "note" to r.note, "status" to r.status.name,
-                        "createdAt" to r.createdAt, "updatedAt" to r.updatedAt
-                    ),
-                    SetOptions.merge()
+                writeOps += userRoot.collection("reminders").document(r.id) to mapOf(
+                    "personId" to r.personId, "creditId" to r.creditId,
+                    "reminderDate" to r.reminderDate, "reminderTime" to r.reminderTime,
+                    "note" to r.note, "status" to r.status.name,
+                    "createdAt" to r.createdAt, "updatedAt" to r.updatedAt
                 )
-                pushedCount++
             }
         }
-        if (pushedCount > 0) {
+        val pushedCount = writeOps.size
+        writeOps.chunked(450).forEach { chunk ->
+            val batch = firestore.batch()
+            chunk.forEach { (docRef, data) ->
+                batch.set(docRef, data, SetOptions.merge())
+            }
             batch.commit().await()
         }
 

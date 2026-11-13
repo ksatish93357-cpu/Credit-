@@ -195,6 +195,9 @@ class JsonBackupManager(private val db: CreditLoggerDatabase) {
         val importedCreditIds = credits.map { it.id }.toSet() + existingCredits
 
         val warnings = mutableListOf<String>()
+        if (root.optString("exportScope", "") == ExportScope.TRANSACTIONS_ONLY.name) {
+            warnings.add("Transactions-only backup: use Safe Merge (Replace All is blocked to protect profiles & credits).")
+        }
         credits.forEach { c ->
             if (c.personId !in importedPersonIds) {
                 warnings.add("Credit ${c.creditNumber} references missing person ${c.personId}")
@@ -318,13 +321,13 @@ class JsonBackupManager(private val db: CreditLoggerDatabase) {
                 }
             }
 
-            // Recalculate all credit balances from events to guarantee financial consistency
             val allCredits = db.creditDao().getAll().map { it.toDomain() }
             val today = LedgerDate.todayLocal()
             for (credit in allCredits) {
                 val events = db.creditEventDao().getByCreditId(credit.id).map { it.toDomain() }
+                val startDate = LedgerDate.parseOrNull(credit.startDate) ?: today
                 val maxDate = events.mapNotNull { LedgerDate.parseOrNull(it.effectiveDate) }.maxOrNull()
-                val asOf = if (maxDate != null && maxDate > today) maxDate else today
+                val asOf = maxOf(today, startDate, maxDate ?: today)
                 val snap = InterestEngine.calculateCreditBalanceAsOfDate(credit, events, asOf)
                 db.creditDao().upsert(
                     credit.copy(

@@ -19,9 +19,11 @@ import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
 import android.print.PrintManager
 import androidx.core.content.FileProvider
+import androidx.core.graphics.toColorInt
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.Locale
 
 object PdfAndShareManager {
 
@@ -59,14 +61,12 @@ object PdfAndShareManager {
         val margin = 40f
         val contentWidth = pageWidth - 2 * margin
 
-        val document = PdfDocument()
-
         val headerBgPaint = Paint().apply {
-            color = Color.parseColor("#0F172A")
+            color = "#0F172A".toColorInt()
             style = Paint.Style.FILL
         }
         val goldAccentPaint = Paint().apply {
-            color = Color.parseColor("#F59E0B")
+            color = "#F59E0B".toColorInt()
             style = Paint.Style.FILL
         }
         val titlePaint = Paint().apply {
@@ -76,29 +76,29 @@ object PdfAndShareManager {
             isAntiAlias = true
         }
         val subtitlePaint = Paint().apply {
-            color = Color.parseColor("#CBD5E1")
+            color = "#CBD5E1".toColorInt()
             textSize = 11f
             typeface = Typeface.SANS_SERIF
             isAntiAlias = true
         }
         val sectionPaint = Paint().apply {
-            color = Color.parseColor("#1E293B")
+            color = "#1E293B".toColorInt()
             textSize = 11.5f
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
             isAntiAlias = true
         }
         val bodyPaint = Paint().apply {
-            color = Color.parseColor("#0F172A")
+            color = "#0F172A".toColorInt()
             textSize = 10.5f
             typeface = Typeface.SANS_SERIF
             isAntiAlias = true
         }
         val dividerPaint = Paint().apply {
-            color = Color.parseColor("#CBD5E1")
+            color = "#CBD5E1".toColorInt()
             strokeWidth = 1f
         }
         val footerPaint = Paint().apply {
-            color = Color.parseColor("#64748B")
+            color = "#64748B".toColorInt()
             textSize = 9f
             isAntiAlias = true
         }
@@ -106,54 +106,57 @@ object PdfAndShareManager {
         val wrappedLines = wrapLines(bodyText, bodyPaint, contentWidth)
         val nativeResult = runCatching {
             val document = PdfDocument()
-            var lineIndex = 0
-            var pageNumber = 1
+            try {
+                var lineIndex = 0
+                var pageNumber = 1
 
-            while (lineIndex < wrappedLines.size || pageNumber == 1) {
-                val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
-                val page = document.startPage(pageInfo)
-                val canvas: Canvas = page.canvas
+                while (lineIndex < wrappedLines.size || pageNumber == 1) {
+                    val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
+                    val page = document.startPage(pageInfo)
+                    val canvas: Canvas = page.canvas
 
-                // Page Header
-                canvas.drawRect(0f, 0f, pageWidth.toFloat(), 84f, headerBgPaint)
-                canvas.drawRect(0f, 84f, pageWidth.toFloat(), 88f, goldAccentPaint)
-                canvas.drawText(title, margin, 36f, titlePaint)
-                canvas.drawText(subtitle, margin, 58f, subtitlePaint)
+                    // Page Header
+                    canvas.drawRect(0f, 0f, pageWidth.toFloat(), 84f, headerBgPaint)
+                    canvas.drawRect(0f, 84f, pageWidth.toFloat(), 88f, goldAccentPaint)
+                    canvas.drawText(title, margin, 36f, titlePaint)
+                    canvas.drawText(subtitle, margin, 58f, subtitlePaint)
 
-                var y = 112f
-                val bottomLimit = pageHeight - 48f
+                    var y = 112f
+                    val bottomLimit = pageHeight - 48f
 
-                while (lineIndex < wrappedLines.size && y < bottomLimit) {
-                    val line = wrappedLines[lineIndex]
-                    when {
-                        line.startsWith("════") || line.startsWith("────") -> {
-                            canvas.drawLine(margin, y - 4f, pageWidth - margin, y - 4f, dividerPaint)
-                            y += 10f
+                    while (lineIndex < wrappedLines.size && y < bottomLimit) {
+                        val line = wrappedLines[lineIndex]
+                        when {
+                            line.startsWith("════") || line.startsWith("────") -> {
+                                canvas.drawLine(margin, y - 4f, pageWidth - margin, y - 4f, dividerPaint)
+                                y += 10f
+                            }
+                            line.endsWith(":") && !line.startsWith(" ") -> {
+                                canvas.drawText(line, margin, y, sectionPaint)
+                                y += 17f
+                            }
+                            else -> {
+                                canvas.drawText(line, margin, y, bodyPaint)
+                                y += 15f
+                            }
                         }
-                        line.endsWith(":") && !line.startsWith(" ") -> {
-                            canvas.drawText(line, margin, y, sectionPaint)
-                            y += 17f
-                        }
-                        else -> {
-                            canvas.drawText(line, margin, y, bodyPaint)
-                            y += 15f
-                        }
+                        lineIndex++
                     }
-                    lineIndex++
+
+                    // Footer
+                    canvas.drawLine(margin, pageHeight - 36f, pageWidth - margin, pageHeight - 36f, dividerPaint)
+                    canvas.drawText("CREDIT LOGGER • Page $pageNumber", margin, pageHeight - 20f, footerPaint)
+
+                    document.finishPage(page)
+                    pageNumber++
                 }
 
-                // Footer
-                canvas.drawLine(margin, pageHeight - 36f, pageWidth - margin, pageHeight - 36f, dividerPaint)
-                canvas.drawText("CREDIT LOGGER • Page $pageNumber", margin, pageHeight - 20f, footerPaint)
-
-                document.finishPage(page)
-                pageNumber++
+                FileOutputStream(outFile).use { fos ->
+                    document.writeTo(fos)
+                }
+            } finally {
+                document.close()
             }
-
-            FileOutputStream(outFile).use { fos ->
-                document.writeTo(fos)
-            }
-            document.close()
         }
 
         if (nativeResult.isFailure) {
@@ -197,7 +200,7 @@ object PdfAndShareManager {
             val xrefOffset = length
             append("xref\n0 ${objs.size + 1}\n0000000000 65535 f \n")
             for (i in 1..objs.size) {
-                append(String.format("%010d 00000 n \n", offsets[i]))
+                append(String.format(Locale.US, "%010d 00000 n \n", offsets[i]))
             }
             append("trailer << /Size ${objs.size + 1} /Root 1 0 R >>\nstartxref\n$xrefOffset\n%%EOF\n")
         }
@@ -269,9 +272,18 @@ object PdfAndShareManager {
                 cancellationSignal: CancellationSignal?,
                 callback: WriteResultCallback?
             ) {
+                if (cancellationSignal?.isCanceled == true) {
+                    callback?.onWriteCancelled()
+                    return
+                }
+                val fd = destination?.fileDescriptor
+                if (fd == null) {
+                    callback?.onWriteFailed("Invalid print destination")
+                    return
+                }
                 try {
                     FileInputStream(file).use { input ->
-                        FileOutputStream(destination?.fileDescriptor).use { output ->
+                        FileOutputStream(fd).use { output ->
                             input.copyTo(output)
                         }
                     }

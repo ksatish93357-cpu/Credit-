@@ -1,5 +1,6 @@
 package com.example.ui.navigation
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -8,16 +9,16 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.People
-import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -206,7 +207,7 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
     val topDestinations = listOf(
         TopNavDestination(Routes.HOME, strings.navHome, Icons.Filled.Home, Icons.Outlined.Home),
         TopNavDestination(Routes.PROFILES, strings.navProfiles, Icons.Filled.People, Icons.Outlined.People),
-        TopNavDestination(Routes.TRANSACTIONS, strings.navTransactions, Icons.Filled.ReceiptLong, Icons.Outlined.ReceiptLong),
+        TopNavDestination(Routes.TRANSACTIONS, strings.navTransactions, Icons.AutoMirrored.Filled.ReceiptLong, Icons.AutoMirrored.Outlined.ReceiptLong),
         TopNavDestination(Routes.CALCULATOR, strings.navCalculator, Icons.Filled.Calculate, Icons.Outlined.Calculate),
         TopNavDestination(Routes.SETTINGS, strings.navSettings, Icons.Filled.Settings, Icons.Outlined.Settings)
     )
@@ -306,8 +307,8 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                                     restoreState = true
                                 }
                             },
-                            onOpenPersonDetail = { pid -> navController.navigate("profile_detail/$pid") },
-                            onOpenCreditDetail = { cid -> navController.navigate("credit_detail/$cid") },
+                            onOpenPersonDetail = { pid -> navController.navigate("profile_detail/${Uri.encode(pid)}") },
+                            onOpenCreditDetail = { cid -> navController.navigate("credit_detail/${Uri.encode(cid)}") },
                             onOpenTransactions = {
                                 navController.navigate(Routes.TRANSACTIONS) {
                                     popUpTo(Routes.HOME) { saveState = true }
@@ -325,7 +326,7 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                     composable(Routes.PROFILES) {
                         ProfilesListScreen(
                             state = state,
-                            onOpenPersonDetail = { pid -> navController.navigate("profile_detail/$pid") },
+                            onOpenPersonDetail = { pid -> navController.navigate("profile_detail/${Uri.encode(pid)}") },
                             onAddPerson = { isCreatingPerson = true }
                         )
                     }
@@ -334,7 +335,7 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                         route = Routes.PROFILE_DETAIL,
                         arguments = listOf(navArgument("personId") { type = NavType.StringType })
                     ) { backStack ->
-                        val personId = backStack.arguments?.getString("personId") ?: ""
+                        val personId = Uri.decode(backStack.arguments?.getString("personId") ?: "")
                         ProfileDetailScreen(
                             personId = personId,
                             state = state,
@@ -344,10 +345,10 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                             onDeletePerson = { pid ->
                                 viewModel.deletePersonPermanently(pid) { navController.popBackStack() }
                             },
-                            onAddCredit = { pid -> navController.navigate("add_credit?personId=$pid") },
-                            onAddCreditPayment = { pid -> navController.navigate("add_credit_payment?personId=$pid") },
-                            onAddNormalPayment = { pid -> navController.navigate("add_normal_payment?personId=$pid") },
-                            onOpenCreditDetail = { cid -> navController.navigate("credit_detail/$cid") },
+                            onAddCredit = { pid -> navController.navigate("add_credit?personId=${Uri.encode(pid)}") },
+                            onAddCreditPayment = { pid -> navController.navigate("add_credit_payment?personId=${Uri.encode(pid)}") },
+                            onAddNormalPayment = { pid -> navController.navigate("add_normal_payment?personId=${Uri.encode(pid)}") },
+                            onOpenCreditDetail = { cid -> navController.navigate("credit_detail/${Uri.encode(cid)}") },
                             onShareProfileStatement = { pid ->
                                 val person = state.persons.firstOrNull { it.id == pid }
                                 val text = viewModel.buildProfileStatementText(pid, state.asOfDate)
@@ -368,7 +369,7 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                         route = Routes.ADD_CREDIT,
                         arguments = listOf(navArgument("personId") { type = NavType.StringType; nullable = true })
                     ) { backStack ->
-                        val personId = backStack.arguments?.getString("personId")
+                        val personId = backStack.arguments?.getString("personId")?.let(Uri::decode)
                         AddCreditScreen(
                             preselectedPersonId = personId,
                             state = state,
@@ -387,16 +388,16 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                         route = Routes.CREDIT_DETAIL,
                         arguments = listOf(navArgument("creditId") { type = NavType.StringType })
                     ) { backStack ->
-                        val creditId = backStack.arguments?.getString("creditId") ?: ""
+                        val creditId = Uri.decode(backStack.arguments?.getString("creditId") ?: "")
                         CreditDetailScreen(
                             creditId = creditId,
                             state = state,
                             onBack = { navController.popBackStack() },
                             onAddPayment = { cid ->
                                 val c = state.credits.firstOrNull { it.id == cid }
-                                navController.navigate("add_credit_payment?personId=${c?.personId}&creditId=$cid")
+                                navController.navigate("add_credit_payment?personId=${Uri.encode(c?.personId ?: "")}&creditId=${Uri.encode(cid)}")
                             },
-                            onMainUpdate = { cid -> navController.navigate("main_credit_update/$cid") },
+                            onMainUpdate = { cid -> navController.navigate("main_credit_update/${Uri.encode(cid)}") },
                             onUpdateDetails = { cid, due, note -> viewModel.updateCreditDetails(cid, due, note) },
                             onCloseOrReopen = { cid, close, date -> viewModel.closeOrReopenCredit(cid, close, date) },
                             onArchiveRestore = { cid, arch -> viewModel.setCreditArchived(cid, arch) },
@@ -421,7 +422,7 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                         route = Routes.MAIN_CREDIT_UPDATE,
                         arguments = listOf(navArgument("creditId") { type = NavType.StringType })
                     ) { backStack ->
-                        val creditId = backStack.arguments?.getString("creditId") ?: ""
+                        val creditId = Uri.decode(backStack.arguments?.getString("creditId") ?: "")
                         MainCreditUpdateScreen(
                             creditId = creditId,
                             state = state,
@@ -441,8 +442,8 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                             navArgument("creditId") { type = NavType.StringType; nullable = true }
                         )
                     ) { backStack ->
-                        val personId = backStack.arguments?.getString("personId")
-                        val creditId = backStack.arguments?.getString("creditId")
+                        val personId = backStack.arguments?.getString("personId")?.takeIf { it.isNotBlank() }?.let(Uri::decode)
+                        val creditId = backStack.arguments?.getString("creditId")?.takeIf { it.isNotBlank() }?.let(Uri::decode)
                         AddCreditPaymentScreen(
                             preselectedPersonId = personId,
                             preselectedCreditId = creditId,
@@ -466,7 +467,7 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                         route = Routes.ADD_NORMAL_PAYMENT,
                         arguments = listOf(navArgument("personId") { type = NavType.StringType; nullable = true })
                     ) { backStack ->
-                        val personId = backStack.arguments?.getString("personId")
+                        val personId = backStack.arguments?.getString("personId")?.takeIf { it.isNotBlank() }?.let(Uri::decode)
                         AddNormalPaymentScreen(
                             preselectedPersonId = personId,
                             state = state,
@@ -614,35 +615,43 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                 viewModel.showToast(strings.copiedToClipboard)
             },
             onShareText = {
-                PdfAndShareManager.shareText(context, shareData.title, shareData.text)
+                runCatching {
+                    PdfAndShareManager.shareText(context, shareData.title, shareData.text)
+                }.onFailure { viewModel.showToast(it.message ?: "Unable to share") }
             },
             onSharePdf = {
-                val file = viewModel.generatePdfFile(
-                    fileName = shareData.fileName,
-                    title = "CREDIT LOGGER",
-                    subtitle = shareData.title,
-                    body = shareData.text
-                )
-                PdfAndShareManager.sharePdfFile(context, file, shareData.title)
+                runCatching {
+                    val file = viewModel.generatePdfFile(
+                        fileName = shareData.fileName,
+                        title = "CREDIT LOGGER",
+                        subtitle = shareData.title,
+                        body = shareData.text
+                    )
+                    PdfAndShareManager.sharePdfFile(context, file, shareData.title)
+                }.onFailure { viewModel.showToast(it.message ?: "Unable to share PDF") }
             },
             onDownloadPdf = {
-                val file = viewModel.generatePdfFile(
-                    fileName = shareData.fileName,
-                    title = "CREDIT LOGGER",
-                    subtitle = shareData.title,
-                    body = shareData.text
-                )
-                pendingPdfDownloadFile = file
-                savePdfLauncher.launch(shareData.fileName)
+                runCatching {
+                    val file = viewModel.generatePdfFile(
+                        fileName = shareData.fileName,
+                        title = "CREDIT LOGGER",
+                        subtitle = shareData.title,
+                        body = shareData.text
+                    )
+                    pendingPdfDownloadFile = file
+                    savePdfLauncher.launch(shareData.fileName)
+                }.onFailure { viewModel.showToast(it.message ?: "Unable to generate PDF") }
             },
             onPrintPdf = {
-                val file = viewModel.generatePdfFile(
-                    fileName = shareData.fileName,
-                    title = "CREDIT LOGGER",
-                    subtitle = shareData.title,
-                    body = shareData.text
-                )
-                PdfAndShareManager.printPdfFile(context, file, shareData.title)
+                runCatching {
+                    val file = viewModel.generatePdfFile(
+                        fileName = shareData.fileName,
+                        title = "CREDIT LOGGER",
+                        subtitle = shareData.title,
+                        body = shareData.text
+                    )
+                    PdfAndShareManager.printPdfFile(context, file, shareData.title)
+                }.onFailure { viewModel.showToast(it.message ?: "Unable to print PDF") }
             }
         )
     }
