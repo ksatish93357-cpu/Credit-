@@ -827,46 +827,51 @@ class CreditLoggerViewModel(application: Application) : AndroidViewModel(applica
         createIfMissing: Boolean
     ) {
         viewModelScope.launch {
-            isBusyFlow.value = true
-            val res = withContext(Dispatchers.IO) {
-                firebaseSyncManager.connectAndSignIn(config, email, password, createIfMissing)
-            }
-            isBusyFlow.value = false
-            res.onSuccess {
-                showToast("Firebase connected: ${it.userEmail}")
-            }.onFailure {
-                errorMessageFlow.value = it.message ?: "Firebase connection failed"
+            runSafe {
+                val res = withContext(Dispatchers.IO) {
+                    firebaseSyncManager.connectAndSignIn(config, email, password, createIfMissing)
+                }
+                res.onSuccess {
+                    showToast("Firebase connected: ${it.userEmail}")
+                }.onFailure {
+                    errorMessageFlow.value = it.message ?: "Firebase connection failed"
+                }
             }
         }
     }
 
     fun testFirebaseConnection(config: FirebaseCloudConfig) {
         viewModelScope.launch {
-            isBusyFlow.value = true
-            val res = withContext(Dispatchers.IO) { firebaseSyncManager.testConnection(config) }
-            isBusyFlow.value = false
-            res.onSuccess { showToast(it) }.onFailure { errorMessageFlow.value = it.message }
+            runSafe {
+                val res = withContext(Dispatchers.IO) { firebaseSyncManager.testConnection(config) }
+                res.onSuccess { showToast(it) }
+                    .onFailure { errorMessageFlow.value = it.message ?: "Connection test failed" }
+            }
         }
     }
 
     fun syncFirebaseNow(config: FirebaseCloudConfig) {
         viewModelScope.launch {
-            isBusyFlow.value = true
-            val res = withContext(Dispatchers.IO) { firebaseSyncManager.syncNow(config) }
-            isBusyFlow.value = false
-            res.onSuccess {
-                refreshDbSize()
-                showToast(it.lastSyncStatus)
-            }.onFailure {
-                errorMessageFlow.value = it.message ?: "Sync failed"
+            runSafe {
+                val res = withContext(Dispatchers.IO) { firebaseSyncManager.syncNow(config) }
+                res.onSuccess {
+                    refreshDbSize()
+                    showToast(it.lastSyncStatus)
+                }.onFailure {
+                    errorMessageFlow.value = it.message ?: "Sync failed"
+                }
             }
         }
     }
 
     fun disconnectFirebase() {
         viewModelScope.launch {
-            firebaseSyncManager.disconnect(uiState.value.firebaseConfig)
-            showToast("Disconnected from Firebase. Local data remains intact.")
+            runSafe {
+                withContext(Dispatchers.IO) {
+                    firebaseSyncManager.disconnect(uiState.value.firebaseConfig)
+                }
+                showToast("Disconnected from Firebase. Local data remains intact.")
+            }
         }
     }
 

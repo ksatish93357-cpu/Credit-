@@ -671,6 +671,9 @@ fun FirebaseCloudSettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("cloud_status_card"),
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = if (config.isConnected) PaidGreen.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant
@@ -721,13 +724,17 @@ fun FirebaseCloudSettingsScreen(
                     Button(
                         enabled = !isBusy && apiKey.isNotBlank() && projectId.isNotBlank() && appId.isNotBlank() && email.isNotBlank() && password.length >= 6,
                         onClick = { onConnect(buildConfig(), email, password, createIfMissing) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("cloud_connect_btn")
                     ) { Text(strings.connect) }
 
                     OutlinedButton(
                         enabled = !isBusy,
                         onClick = { onTestConnection(buildConfig()) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("cloud_test_btn")
                     ) { Text(strings.testConnection) }
                 }
 
@@ -736,7 +743,9 @@ fun FirebaseCloudSettingsScreen(
                         enabled = !isBusy && config.isConnected,
                         onClick = { onSyncNow(buildConfig()) },
                         colors = ButtonDefaults.buttonColors(containerColor = PaidGreen),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("cloud_sync_btn")
                     ) {
                         Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.size(6.dp))
@@ -746,7 +755,9 @@ fun FirebaseCloudSettingsScreen(
                         enabled = !isBusy && config.isConnected,
                         onClick = onDisconnect,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = OverdueRed),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("cloud_disconnect_btn")
                     ) { Text(strings.disconnect) }
                 }
 
