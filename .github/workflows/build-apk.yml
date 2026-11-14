@@ -1,91 +1,63 @@
-name: Build Android APK
+
+name: Credit Logger Android Build
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main]
   pull_request:
-    branches: [ main, master ]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build-apk:
-    name: Test, Lint & Build APK
+  build:
+    name: Test and Build APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Gradle
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
-      - name: Prepare Android debug keystore
+      - name: Generate Debug Keystore
         run: |
-          if [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-          elif [ ! -f debug.keystore ]; then
-            keytool -genkeypair -v \
-              -keystore debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
+          keytool -genkeypair -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
 
-      - name: Run unit and Robolectric tests
+      - name: Run Unit Tests
         run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Run Android Lint
+      - name: Run Lint
         run: gradle :app:lintDebug --no-daemon
 
       - name: Build Debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload Debug APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: credit-logger-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Credit-Logger-Debug-APK
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
-      - name: Build Signed Release APK (when secrets configured)
-        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' }}
-        env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
-        run: |
-          echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > my-upload-key.jks
-          gradle :app:assembleRelease --no-daemon --stacktrace
-
-      - name: Upload Signed Release APK
-        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: credit-logger-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
-          if-no-files-found: error
-
-      - name: Upload test and lint reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-reports
-          path: |
-            app/build/reports/tests/
-            app/build/reports/lint-results-debug.html
-          if-no-files-found: ignore
