@@ -431,6 +431,48 @@ class CreditLoggerViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    fun updateCreditFullDetails(
+        creditId: String,
+        creditNumber: String,
+        originalPrincipalPaise: Long,
+        interestRate: String,
+        ratePeriod: RatePeriod,
+        interestMethod: InterestMethod,
+        startDate: LedgerDate,
+        dueDate: LedgerDate?,
+        note: String,
+        onDone: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            runSafe {
+                repository.updateCreditFullDetails(
+                    creditId = creditId,
+                    creditNumber = creditNumber,
+                    originalPrincipalPaise = originalPrincipalPaise,
+                    interestRate = interestRate,
+                    ratePeriod = ratePeriod,
+                    interestMethod = interestMethod,
+                    startDate = startDate,
+                    dueDate = dueDate,
+                    note = note
+                )
+                refreshDbSize()
+                onDone()
+            }
+        }
+    }
+
+    fun deleteCreditPermanently(creditId: String, onDeleted: () -> Unit = {}) {
+        viewModelScope.launch {
+            runSafe {
+                val reminderIds = repository.deleteCreditPermanently(creditId)
+                reminderIds.forEach { ReminderScheduler.cancelReminder(appContext, it) }
+                refreshDbSize()
+                onDeleted()
+            }
+        }
+    }
+
     fun closeOrReopenCredit(creditId: String, close: Boolean, date: LedgerDate, note: String = "") {
         viewModelScope.launch {
             runSafe {
@@ -526,6 +568,66 @@ class CreditLoggerViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             runSafe {
                 repository.updatePaymentManualNote(paymentId, newManualNote)
+            }
+        }
+    }
+
+    fun updatePaymentFull(
+        paymentId: String,
+        amountPaise: Long,
+        paymentDate: LedgerDate,
+        paymentMethod: PaymentMethod,
+        allocationMode: AllocationMode?,
+        note: String,
+        onDone: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            runSafe {
+                repository.updatePaymentFull(
+                    paymentId = paymentId,
+                    amountPaise = amountPaise,
+                    paymentDate = paymentDate,
+                    paymentMethod = paymentMethod,
+                    allocationMode = allocationMode,
+                    note = note
+                )
+                refreshDbSize()
+                onDone()
+            }
+        }
+    }
+
+    fun updateAdjustmentEvent(
+        eventId: String,
+        newPrincipalPaise: Long,
+        newRate: String,
+        newRatePeriod: RatePeriod,
+        effectiveDate: LedgerDate,
+        note: String,
+        onDone: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            runSafe {
+                repository.updateAdjustmentEvent(
+                    eventId = eventId,
+                    newPrincipalPaise = newPrincipalPaise,
+                    newRate = newRate,
+                    newRatePeriod = newRatePeriod,
+                    effectiveDate = effectiveDate,
+                    note = note
+                )
+                refreshDbSize()
+                onDone()
+            }
+        }
+    }
+
+    fun deleteEventOrPaymentPermanently(eventId: String, onDeleted: () -> Unit = {}) {
+        viewModelScope.launch {
+            runSafe {
+                repository.deleteEventOrPaymentPermanently(eventId)
+                refreshDbSize()
+                onDeleted()
             }
         }
     }

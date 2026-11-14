@@ -53,6 +53,9 @@ interface CreditDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(credits: List<CreditEntity>)
 
+    @Query("DELETE FROM credits WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Query("DELETE FROM credits WHERE personId = :personId")
     suspend fun deleteByPersonId(personId: String)
 
@@ -79,6 +82,15 @@ interface CreditEventDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(events: List<CreditEventEntity>)
+
+    @Query("DELETE FROM credit_events WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM credit_events WHERE creditId = :creditId")
+    suspend fun deleteByCreditId(creditId: String)
+
+    @Query("DELETE FROM credit_events WHERE reversesEventId = :eventId")
+    suspend fun deleteReversalsForEvent(eventId: String)
 
     @Query("DELETE FROM credit_events WHERE personId = :personId")
     suspend fun deleteByPersonId(personId: String)
@@ -107,6 +119,12 @@ interface PaymentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(payments: List<PaymentEntity>)
 
+    @Query("DELETE FROM payments WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM payments WHERE creditId = :creditId")
+    suspend fun deleteByCreditId(creditId: String)
+
     @Query("DELETE FROM payments WHERE personId = :personId")
     suspend fun deleteByPersonId(personId: String)
 
@@ -122,11 +140,20 @@ interface AdjustmentDao {
     @Query("SELECT * FROM adjustments ORDER BY effectiveDate DESC, createdAt DESC")
     suspend fun getAll(): List<AdjustmentEntity>
 
+    @Query("SELECT * FROM adjustments WHERE id = :id")
+    suspend fun getById(id: String): AdjustmentEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(adjustment: AdjustmentEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(adjustments: List<AdjustmentEntity>)
+
+    @Query("DELETE FROM adjustments WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM adjustments WHERE creditId = :creditId")
+    suspend fun deleteByCreditId(creditId: String)
 
     @Query("DELETE FROM adjustments WHERE personId = :personId")
     suspend fun deleteByPersonId(personId: String)
@@ -169,6 +196,9 @@ interface ReminderDao {
 
     @Query("DELETE FROM reminders WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM reminders WHERE creditId = :creditId")
+    suspend fun deleteByCreditId(creditId: String)
 
     @Query("DELETE FROM reminders WHERE personId = :personId")
     suspend fun deleteByPersonId(personId: String)

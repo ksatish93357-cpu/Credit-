@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
@@ -62,10 +63,12 @@ import com.example.domain.engine.IndianNumberFormatter
 import com.example.domain.engine.InterestEngine
 import com.example.domain.engine.LedgerDate
 import com.example.domain.engine.StatementTextGenerator
+import com.example.domain.model.AllocationMode
 import com.example.domain.model.CreditEvent
 import com.example.domain.model.CreditEventType
 import com.example.domain.model.Payment
 import com.example.domain.model.PaymentMethod
+import com.example.domain.model.RatePeriod
 import com.example.domain.model.TransactionSortOption
 import com.example.ui.components.LedgerDateField
 import com.example.ui.theme.InterestOrange
@@ -81,7 +84,23 @@ import com.example.ui.viewmodel.MainUiState
 fun TransactionsScreen(
     state: MainUiState,
     onShareReceipt: (Payment) -> Unit,
-    onEditManualNote: (paymentId: String, newNote: String) -> Unit,
+    onEditPaymentFull: (
+        paymentId: String,
+        amountPaise: Long,
+        paymentDate: LedgerDate,
+        method: PaymentMethod,
+        allocationMode: AllocationMode?,
+        note: String
+    ) -> Unit,
+    onEditAdjustmentEvent: (
+        eventId: String,
+        newPrincipalPaise: Long,
+        newRate: String,
+        newRatePeriod: RatePeriod,
+        effectiveDate: LedgerDate,
+        note: String
+    ) -> Unit,
+    onDeleteEventOrPayment: (eventId: String) -> Unit,
     onReverseEvent: (eventId: String, reason: String) -> Unit
 ) {
     val strings = LocalAppStrings.current
@@ -100,7 +119,9 @@ fun TransactionsScreen(
     var showFilterDialog by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var selectedEventForDetail by remember { mutableStateOf<CreditEvent?>(null) }
-    var editNotePaymentId by remember { mutableStateOf<String?>(null) }
+    var paymentToEdit by remember { mutableStateOf<Payment?>(null) }
+    var adjustmentToEdit by remember { mutableStateOf<CreditEvent?>(null) }
+    var deleteTarget by remember { mutableStateOf<CreditEvent?>(null) }
     var reverseTarget by remember { mutableStateOf<CreditEvent?>(null) }
 
     val personMap = remember(state.persons) { state.persons.associateBy { it.id } }
@@ -301,6 +322,50 @@ fun TransactionsScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
+                                    val linkedPay = paymentMap[ev.id]
+                                    val isEditableAdj = !ev.isReversed &&
+                                        (ev.eventType == CreditEventType.PRINCIPAL_ADJUSTMENT || ev.eventType == CreditEventType.INTEREST_RATE_UPDATE)
+                                    if (ev.eventType != CreditEventType.CREDIT_CREATED) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)
+                                        ) {
+                                            if (linkedPay != null) {
+                                                TextButton(onClick = { onShareReceipt(linkedPay) }) {
+                                                    Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(Modifier.size(4.dp))
+                                                    Text(strings.share)
+                                                }
+                                                if (!ev.isReversed) {
+                                                    TextButton(
+                                                        onClick = { paymentToEdit = linkedPay },
+                                                        modifier = Modifier.testTag("tx_edit_${ev.id}")
+                                                    ) {
+                                                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                        Spacer(Modifier.size(4.dp))
+                                                        Text(strings.edit)
+                                                    }
+                                                }
+                                            } else if (isEditableAdj) {
+                                                TextButton(
+                                                    onClick = { adjustmentToEdit = ev },
+                                                    modifier = Modifier.testTag("tx_edit_adj_${ev.id}")
+                                                ) {
+                                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(Modifier.size(4.dp))
+                                                    Text(strings.edit)
+                                                }
+                                            }
+                                            TextButton(
+                                                onClick = { deleteTarget = ev },
+                                                modifier = Modifier.testTag("tx_delete_${ev.id}")
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = null, tint = OverdueRed, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.size(4.dp))
+                                                Text(strings.delete, color = OverdueRed)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -314,6 +379,8 @@ fun TransactionsScreen(
     if (selectedEventForDetail != null) {
         val ev = selectedEventForDetail!!
         val linkedPayment = paymentMap[ev.id]
+        val isEditableAdj = !ev.isReversed &&
+            (ev.eventType == CreditEventType.PRINCIPAL_ADJUSTMENT || ev.eventType == CreditEventType.INTEREST_RATE_UPDATE)
         AlertDialog(
             onDismissRequest = { selectedEventForDetail = null },
             title = { Text(ev.eventType.name) },
@@ -336,7 +403,10 @@ fun TransactionsScreen(
                 }
             },
             confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     if (linkedPayment != null) {
                         TextButton(onClick = {
                             selectedEventForDetail = null
@@ -346,9 +416,20 @@ fun TransactionsScreen(
                             Spacer(Modifier.size(4.dp))
                             Text(strings.share)
                         }
+                        if (!ev.isReversed) {
+                            TextButton(onClick = {
+                                selectedEventForDetail = null
+                                paymentToEdit = linkedPayment
+                            }) {
+                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(4.dp))
+                                Text(strings.edit)
+                            }
+                        }
+                    } else if (isEditableAdj) {
                         TextButton(onClick = {
                             selectedEventForDetail = null
-                            editNotePaymentId = linkedPayment.id
+                            adjustmentToEdit = ev
                         }) {
                             Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.size(4.dp))
@@ -360,9 +441,19 @@ fun TransactionsScreen(
                             selectedEventForDetail = null
                             reverseTarget = ev
                         }) {
-                            Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, tint = OverdueRed, modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, tint = InterestOrange, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.size(4.dp))
-                            Text(strings.reverseEvent, color = OverdueRed)
+                            Text(strings.reverseEvent, color = InterestOrange)
+                        }
+                    }
+                    if (ev.eventType != CreditEventType.CREDIT_CREATED) {
+                        TextButton(onClick = {
+                            selectedEventForDetail = null
+                            deleteTarget = ev
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = OverdueRed, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.size(4.dp))
+                            Text(strings.delete, color = OverdueRed)
                         }
                     }
                 }
@@ -373,36 +464,41 @@ fun TransactionsScreen(
         )
     }
 
-    if (editNotePaymentId != null) {
-        val pay = paymentMap[editNotePaymentId!!]
-        if (pay != null) {
-            var noteText by remember { mutableStateOf(pay.note) }
-            AlertDialog(
-                onDismissRequest = { editNotePaymentId = null },
-                title = { Text("${strings.edit} ${strings.notes}") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("System note is preserved automatically.", style = MaterialTheme.typography.labelSmall)
-                        OutlinedTextField(
-                            value = noteText,
-                            onValueChange = { noteText = it },
-                            label = { Text(strings.notes) },
-                            minLines = 2,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(onClick = {
-                        onEditManualNote(pay.id, noteText)
-                        editNotePaymentId = null
-                    }) { Text(strings.save) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { editNotePaymentId = null }) { Text(strings.cancel) }
-                }
-            )
-        }
+    if (paymentToEdit != null) {
+        EditPaymentDialog(
+            payment = paymentToEdit!!,
+            state = state,
+            onDismiss = { paymentToEdit = null },
+            onSave = { pid, amountPaise, date, method, mode, note ->
+                onEditPaymentFull(pid, amountPaise, date, method, mode, note)
+                paymentToEdit = null
+            }
+        )
+    }
+
+    if (adjustmentToEdit != null) {
+        EditAdjustmentDialog(
+            event = adjustmentToEdit!!,
+            state = state,
+            onDismiss = { adjustmentToEdit = null },
+            onSave = { evId, newPrincipalPaise, newRate, newPeriod, effDate, note ->
+                onEditAdjustmentEvent(evId, newPrincipalPaise, newRate, newPeriod, effDate, note)
+                adjustmentToEdit = null
+            }
+        )
+    }
+
+    if (deleteTarget != null) {
+        val target = deleteTarget!!
+        DeleteEventConfirmDialog(
+            event = target,
+            state = state,
+            onDismiss = { deleteTarget = null },
+            onConfirmDelete = {
+                onDeleteEventOrPayment(target.id)
+                deleteTarget = null
+            }
+        )
     }
 
     if (reverseTarget != null) {

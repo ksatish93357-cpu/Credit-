@@ -21,9 +21,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -69,10 +72,13 @@ import com.example.domain.engine.IndianNumberFormatter
 import com.example.domain.engine.InterestEngine
 import com.example.domain.engine.LedgerDate
 import com.example.domain.engine.StatementTextGenerator
+import com.example.domain.model.AllocationMode
 import com.example.domain.model.CreditEvent
 import com.example.domain.model.CreditEventType
 import com.example.domain.model.CreditStatus
 import com.example.domain.model.InterestMethod
+import com.example.domain.model.Payment
+import com.example.domain.model.PaymentMethod
 import com.example.domain.model.RatePeriod
 import com.example.ui.components.LedgerDateField
 import com.example.ui.theme.InterestOrange
@@ -345,12 +351,41 @@ fun AddCreditScreen(
 fun CreditDetailScreen(
     creditId: String,
     state: MainUiState,
+    checkUniqueCreditNumber: suspend (creditNumber: String, excludeCreditId: String) -> Boolean,
     onBack: () -> Unit,
     onAddPayment: (String) -> Unit,
     onMainUpdate: (String) -> Unit,
-    onUpdateDetails: (creditId: String, dueDate: LedgerDate?, note: String) -> Unit,
+    onUpdateFullDetails: (
+        creditId: String,
+        creditNumber: String,
+        originalPrincipalPaise: Long,
+        interestRate: String,
+        ratePeriod: RatePeriod,
+        interestMethod: InterestMethod,
+        startDate: LedgerDate,
+        dueDate: LedgerDate?,
+        note: String
+    ) -> Unit,
+    onDeleteCredit: (creditId: String) -> Unit,
     onCloseOrReopen: (creditId: String, close: Boolean, date: LedgerDate) -> Unit,
     onArchiveRestore: (creditId: String, archived: Boolean) -> Unit,
+    onEditPaymentFull: (
+        paymentId: String,
+        amountPaise: Long,
+        paymentDate: LedgerDate,
+        method: PaymentMethod,
+        allocationMode: AllocationMode?,
+        note: String
+    ) -> Unit,
+    onEditAdjustmentEvent: (
+        eventId: String,
+        newPrincipalPaise: Long,
+        newRate: String,
+        newRatePeriod: RatePeriod,
+        effectiveDate: LedgerDate,
+        note: String
+    ) -> Unit,
+    onDeleteEventOrPayment: (eventId: String) -> Unit,
     onReverseEvent: (eventId: String, reason: String) -> Unit,
     onShareStatement: (String, LedgerDate) -> Unit,
     onExportJson: (String) -> Unit
@@ -364,9 +399,10 @@ fun CreditDetailScreen(
     }
     val person = state.persons.firstOrNull { it.id == credit.personId }
     val creditEvents = state.events.filter { it.creditId == creditId }
+    val paymentMap = remember(state.payments) { state.payments.associateBy { it.id } }
     val creditStart = InterestEngine.parseDateOnly(credit.startDate)
 
-    var calcDate by remember { mutableStateOf(maxOf(LedgerDate.todayLocal(), creditStart)) }
+    var calcDate by remember(creditStart) { mutableStateOf(maxOf(LedgerDate.todayLocal(), creditStart)) }
     var dateError by remember { mutableStateOf<String?>(null) }
 
     val snapshot = remember(credit, creditEvents, calcDate) {
@@ -378,7 +414,11 @@ fun CreditDetailScreen(
     val fmt = { p: Long -> IndianNumberFormatter.formatCurrency(p, state.settings.displayDecimals, trimTrailingZerosWhenWhole = true) }
 
     var showEditDetailsDialog by remember { mutableStateOf(false) }
+    var showDeleteCreditDialog by remember { mutableStateOf(false) }
     var showCloseReopenDialog by remember { mutableStateOf(false) }
+    var paymentToEdit by remember { mutableStateOf<Payment?>(null) }
+    var adjustmentToEdit by remember { mutableStateOf<CreditEvent?>(null) }
+    var eventToDelete by remember { mutableStateOf<CreditEvent?>(null) }
     var eventToReverse by remember { mutableStateOf<CreditEvent?>(null) }
 
     Scaffold(
@@ -391,11 +431,17 @@ fun CreditDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showEditDetailsDialog = true }, modifier = Modifier.testTag("credit_top_edit_btn")) {
+                        Icon(Icons.Default.Edit, contentDescription = strings.editCreditTitle)
+                    }
                     IconButton(onClick = { onShareStatement(creditId, calcDate) }, modifier = Modifier.testTag("credit_share_btn")) {
                         Icon(Icons.Default.Share, contentDescription = strings.shareCreditStatement)
                     }
                     IconButton(onClick = { onExportJson(creditId) }) {
                         Icon(Icons.Default.Code, contentDescription = strings.exportCreditJson)
+                    }
+                    IconButton(onClick = { showDeleteCreditDialog = true }, modifier = Modifier.testTag("credit_top_delete_btn")) {
+                        Icon(Icons.Default.DeleteForever, contentDescription = strings.deleteCredit, tint = OverdueRed)
                     }
                 }
             )
@@ -515,7 +561,10 @@ fun CreditDetailScreen(
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            OutlinedButton(onClick = { showEditDetailsDialog = true }, modifier = Modifier.weight(1f)) {
+                            OutlinedButton(
+                                onClick = { showEditDetailsDialog = true },
+                                modifier = Modifier.weight(1f).testTag("credit_edit_details_btn")
+                            ) {
                                 Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.size(6.dp))
                                 Text(strings.editDetails)
@@ -535,6 +584,15 @@ fun CreditDetailScreen(
                                 Text(if (credit.status == CreditStatus.ARCHIVED) strings.restoreProfile else strings.archiveProfile, maxLines = 1)
                             }
                         }
+                        OutlinedButton(
+                            onClick = { showDeleteCreditDialog = true },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = OverdueRed),
+                            modifier = Modifier.fillMaxWidth().testTag("delete_credit_btn")
+                        ) {
+                            Icon(Icons.Default.DeleteForever, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.size(6.dp))
+                            Text(strings.deleteCredit)
+                        }
                     }
                 }
 
@@ -547,6 +605,9 @@ fun CreditDetailScreen(
 
                 items(creditEvents.sortedByDescending { it.effectiveDate }, key = { it.id }) { ev ->
                     val dStr = LedgerDate.parseOrNull(ev.effectiveDate)?.toDisplayString() ?: ev.effectiveDate
+                    val linkedPayment = paymentMap[ev.id]
+                    val isEditableAdjustment = !ev.isReversed &&
+                        (ev.eventType == CreditEventType.PRINCIPAL_ADJUSTMENT || ev.eventType == CreditEventType.INTEREST_RATE_UPDATE)
                     Card(
                         shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(
@@ -572,12 +633,44 @@ fun CreditDetailScreen(
                             }
                             if (ev.systemNote.isNotBlank()) Text(ev.systemNote, style = MaterialTheme.typography.bodySmall)
                             if (ev.note.isNotBlank()) Text("Note: ${ev.note}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (!ev.isReversed && ev.eventType != CreditEventType.CREDIT_CREATED && ev.eventType != CreditEventType.CORRECTION_REVERSAL) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                    TextButton(onClick = { eventToReverse = ev }) {
-                                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, modifier = Modifier.size(16.dp))
+                            if (ev.eventType != CreditEventType.CREDIT_CREATED) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)
+                                ) {
+                                    if (linkedPayment != null && !ev.isReversed) {
+                                        TextButton(
+                                            onClick = { paymentToEdit = linkedPayment },
+                                            modifier = Modifier.testTag("credit_hist_edit_${ev.id}")
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.size(4.dp))
+                                            Text(strings.edit)
+                                        }
+                                    } else if (isEditableAdjustment) {
+                                        TextButton(
+                                            onClick = { adjustmentToEdit = ev },
+                                            modifier = Modifier.testTag("credit_hist_edit_adj_${ev.id}")
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.size(4.dp))
+                                            Text(strings.edit)
+                                        }
+                                    }
+                                    if (!ev.isReversed && ev.eventType != CreditEventType.CORRECTION_REVERSAL) {
+                                        TextButton(onClick = { eventToReverse = ev }) {
+                                            Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.size(4.dp))
+                                            Text(strings.reverseEvent)
+                                        }
+                                    }
+                                    TextButton(
+                                        onClick = { eventToDelete = ev },
+                                        modifier = Modifier.testTag("credit_hist_delete_${ev.id}")
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = null, tint = OverdueRed, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.size(4.dp))
-                                        Text(strings.reverseEvent)
+                                        Text(strings.delete, color = OverdueRed)
                                     }
                                 }
                             }
@@ -589,37 +682,220 @@ fun CreditDetailScreen(
     }
 
     if (showEditDetailsDialog) {
-        var newDue by remember { mutableStateOf(credit.dueDate?.let { LedgerDate.parseOrNull(it) }) }
-        var newNote by remember { mutableStateOf(credit.note) }
+        val reversedIds = remember(creditEvents) { creditEvents.mapNotNull { it.reversesEventId }.toSet() }
+        val earliestNonCreateDate = remember(creditEvents, reversedIds) {
+            creditEvents
+                .filter {
+                    !it.isReversed &&
+                        it.id !in reversedIds &&
+                        it.eventType != CreditEventType.CREDIT_CREATED &&
+                        it.eventType != CreditEventType.CORRECTION_REVERSAL
+                }
+                .mapNotNull { LedgerDate.parseOrNull(it.effectiveDate) }
+                .minOrNull()
+        }
+        var newNumber by remember(credit.id) { mutableStateOf(credit.creditNumber) }
+        var isNumberUnique by remember(credit.id) { mutableStateOf(true) }
+        var newPrincipalText by remember(credit.id) {
+            mutableStateOf(IndianNumberFormatter.paiseToPlainRupeesString(credit.originalPrincipalPaise))
+        }
+        var newRateText by remember(credit.id) { mutableStateOf(credit.interestRate) }
+        var newRatePeriod by remember(credit.id) { mutableStateOf(credit.ratePeriod) }
+        var newMethod by remember(credit.id) { mutableStateOf(credit.interestMethod) }
+        var newStartDate by remember(credit.id) { mutableStateOf(creditStart) }
+        var newDue by remember(credit.id) { mutableStateOf(credit.dueDate?.let { LedgerDate.parseOrNull(it) }) }
+        var newNote by remember(credit.id) { mutableStateOf(credit.note) }
+        var editError by remember { mutableStateOf<String?>(null) }
+
+        LaunchedEffect(newNumber) {
+            if (newNumber.isNotBlank()) {
+                isNumberUnique = checkUniqueCreditNumber(newNumber.trim(), creditId)
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { showEditDetailsDialog = false },
-            title = { Text(strings.editDetails) },
+            title = { Text(strings.editCreditTitle) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = newNumber,
+                        onValueChange = { newNumber = it; editError = null },
+                        label = { Text(strings.creditNumber) },
+                        isError = !isNumberUnique || newNumber.isBlank(),
+                        supportingText = if (!isNumberUnique) {
+                            { Text("Credit number already exists") }
+                        } else null,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("edit_credit_number_input")
+                    )
+                    OutlinedTextField(
+                        value = newPrincipalText,
+                        onValueChange = { newPrincipalText = it; editError = null },
+                        label = { Text(strings.originalPrincipal) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("edit_credit_principal_input")
+                    )
+                    OutlinedTextField(
+                        value = newRateText,
+                        onValueChange = { newRateText = it; editError = null },
+                        label = { Text(strings.interestRate) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("edit_credit_rate_input")
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = newRatePeriod == RatePeriod.MONTHLY,
+                            onClick = { newRatePeriod = RatePeriod.MONTHLY },
+                            label = { Text(strings.monthly) }
+                        )
+                        FilterChip(
+                            selected = newRatePeriod == RatePeriod.YEARLY,
+                            onClick = { newRatePeriod = RatePeriod.YEARLY },
+                            label = { Text(strings.yearly) }
+                        )
+                    }
+                    if (state.settings.allowCompoundInterest || credit.interestMethod == InterestMethod.COMPOUND) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = newMethod == InterestMethod.SIMPLE,
+                                onClick = { newMethod = InterestMethod.SIMPLE },
+                                label = { Text(strings.simpleInterest) }
+                            )
+                            FilterChip(
+                                selected = newMethod == InterestMethod.COMPOUND,
+                                onClick = { newMethod = InterestMethod.COMPOUND },
+                                label = { Text(strings.compoundInterest) }
+                            )
+                        }
+                    }
+                    LedgerDateField(
+                        label = strings.startDate,
+                        date = newStartDate,
+                        onDateSelected = { d ->
+                            newStartDate = d
+                            editError = if (earliestNonCreateDate != null && d > earliestNonCreateDate) {
+                                "Start date cannot be after event on ${earliestNonCreateDate.toDisplayString()}"
+                            } else null
+                        },
+                        testTag = "edit_credit_start_date"
+                    )
                     LedgerDateField(
                         label = strings.dueDateOptional,
                         date = newDue,
-                        onDateSelected = { newDue = it },
+                        onDateSelected = { newDue = it; editError = null },
                         isOptional = true,
-                        onCleared = { newDue = null }
+                        onCleared = { newDue = null },
+                        testTag = "edit_credit_due_date"
                     )
                     OutlinedTextField(
                         value = newNote,
                         onValueChange = { newNote = it },
                         label = { Text(strings.notes) },
                         minLines = 2,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().testTag("edit_credit_note_input")
                     )
+                    if (editError != null) {
+                        Text(editError!!, color = OverdueRed, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    onUpdateDetails(creditId, newDue, newNote)
-                    showEditDetailsDialog = false
-                }) { Text(strings.save) }
+                Button(
+                    onClick = {
+                        val paise = IndianNumberFormatter.rupeesInputToPaiseOrNull(newPrincipalText)
+                        val rateBd = runCatching { java.math.BigDecimal(newRateText.trim()) }.getOrNull()
+                        when {
+                            newNumber.isBlank() || !isNumberUnique -> editError = "Unique credit number required"
+                            paise == null || paise <= 0L -> editError = "Enter positive principal amount"
+                            rateBd == null || rateBd < java.math.BigDecimal.ZERO -> editError = "Enter non-negative interest rate"
+                            earliestNonCreateDate != null && newStartDate > earliestNonCreateDate ->
+                                editError = "Start date cannot be after event on ${earliestNonCreateDate.toDisplayString()}"
+                            newDue != null && newDue!! < newStartDate -> editError = "Due date cannot be before start date"
+                            else -> {
+                                onUpdateFullDetails(
+                                    creditId,
+                                    newNumber.trim(),
+                                    paise,
+                                    newRateText.trim(),
+                                    newRatePeriod,
+                                    newMethod,
+                                    newStartDate,
+                                    newDue,
+                                    newNote
+                                )
+                                showEditDetailsDialog = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.testTag("save_edit_credit_btn")
+                ) { Text(strings.save) }
             },
             dismissButton = {
                 TextButton(onClick = { showEditDetailsDialog = false }) { Text(strings.cancel) }
+            }
+        )
+    }
+
+    if (showDeleteCreditDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteCreditDialog = false },
+            title = { Text(strings.deleteCreditConfirmTitle) },
+            text = { Text("${credit.creditNumber} — ${strings.deleteCreditConfirmBody}") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteCreditDialog = false
+                        onDeleteCredit(creditId)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = OverdueRed),
+                    modifier = Modifier.testTag("confirm_delete_credit_btn")
+                ) { Text(strings.delete) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteCreditDialog = false }) { Text(strings.cancel) }
+            }
+        )
+    }
+
+    if (paymentToEdit != null) {
+        EditPaymentDialog(
+            payment = paymentToEdit!!,
+            state = state,
+            onDismiss = { paymentToEdit = null },
+            onSave = { pid, amountPaise, date, method, mode, note ->
+                onEditPaymentFull(pid, amountPaise, date, method, mode, note)
+                paymentToEdit = null
+            }
+        )
+    }
+
+    if (adjustmentToEdit != null) {
+        EditAdjustmentDialog(
+            event = adjustmentToEdit!!,
+            state = state,
+            onDismiss = { adjustmentToEdit = null },
+            onSave = { evId, newPrincipalPaise, newRate, newPeriod, effDate, note ->
+                onEditAdjustmentEvent(evId, newPrincipalPaise, newRate, newPeriod, effDate, note)
+                adjustmentToEdit = null
+            }
+        )
+    }
+
+    if (eventToDelete != null) {
+        val target = eventToDelete!!
+        DeleteEventConfirmDialog(
+            event = target,
+            state = state,
+            onDismiss = { eventToDelete = null },
+            onConfirmDelete = {
+                onDeleteEventOrPayment(target.id)
+                eventToDelete = null
             }
         )
     }

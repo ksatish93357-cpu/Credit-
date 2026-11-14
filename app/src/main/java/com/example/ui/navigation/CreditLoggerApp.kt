@@ -349,6 +349,14 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                             onAddCreditPayment = { pid -> navController.navigate("add_credit_payment?personId=${Uri.encode(pid)}") },
                             onAddNormalPayment = { pid -> navController.navigate("add_normal_payment?personId=${Uri.encode(pid)}") },
                             onOpenCreditDetail = { cid -> navController.navigate("credit_detail/${Uri.encode(cid)}") },
+                            onDeleteCredit = { cid -> viewModel.deleteCreditPermanently(cid) },
+                            onEditPaymentFull = { payId, amountPaise, date, method, mode, note ->
+                                viewModel.updatePaymentFull(payId, amountPaise, date, method, mode, note)
+                            },
+                            onEditAdjustmentEvent = { evId, newPrincipalPaise, newRate, newPeriod, effDate, note ->
+                                viewModel.updateAdjustmentEvent(evId, newPrincipalPaise, newRate, newPeriod, effDate, note)
+                            },
+                            onDeleteEventOrPayment = { evId -> viewModel.deleteEventOrPaymentPermanently(evId) },
                             onShareProfileStatement = { pid ->
                                 val person = state.persons.firstOrNull { it.id == pid }
                                 val text = viewModel.buildProfileStatementText(pid, state.asOfDate)
@@ -392,15 +400,28 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                         CreditDetailScreen(
                             creditId = creditId,
                             state = state,
+                            checkUniqueCreditNumber = { num, exclId -> viewModel.isCreditNumberUnique(num, exclId) },
                             onBack = { navController.popBackStack() },
                             onAddPayment = { cid ->
                                 val c = state.credits.firstOrNull { it.id == cid }
                                 navController.navigate("add_credit_payment?personId=${Uri.encode(c?.personId ?: "")}&creditId=${Uri.encode(cid)}")
                             },
                             onMainUpdate = { cid -> navController.navigate("main_credit_update/${Uri.encode(cid)}") },
-                            onUpdateDetails = { cid, due, note -> viewModel.updateCreditDetails(cid, due, note) },
+                            onUpdateFullDetails = { cid, num, principalPaise, rate, period, method, start, due, note ->
+                                viewModel.updateCreditFullDetails(cid, num, principalPaise, rate, period, method, start, due, note)
+                            },
+                            onDeleteCredit = { cid ->
+                                viewModel.deleteCreditPermanently(cid) { navController.popBackStack() }
+                            },
                             onCloseOrReopen = { cid, close, date -> viewModel.closeOrReopenCredit(cid, close, date) },
                             onArchiveRestore = { cid, arch -> viewModel.setCreditArchived(cid, arch) },
+                            onEditPaymentFull = { payId, amountPaise, date, method, mode, note ->
+                                viewModel.updatePaymentFull(payId, amountPaise, date, method, mode, note)
+                            },
+                            onEditAdjustmentEvent = { evId, newPrincipalPaise, newRate, newPeriod, effDate, note ->
+                                viewModel.updateAdjustmentEvent(evId, newPrincipalPaise, newRate, newPeriod, effDate, note)
+                            },
+                            onDeleteEventOrPayment = { evId -> viewModel.deleteEventOrPaymentPermanently(evId) },
                             onReverseEvent = { evId, reason -> viewModel.reverseEvent(evId, reason) },
                             onShareStatement = { cid, asOf ->
                                 val c = state.credits.firstOrNull { it.id == cid }
@@ -497,7 +518,13 @@ fun CreditLoggerApp(viewModel: CreditLoggerViewModel) {
                                     text = text
                                 )
                             },
-                            onEditManualNote = { payId, newNote -> viewModel.updatePaymentManualNote(payId, newNote) },
+                            onEditPaymentFull = { payId, amountPaise, date, method, mode, note ->
+                                viewModel.updatePaymentFull(payId, amountPaise, date, method, mode, note)
+                            },
+                            onEditAdjustmentEvent = { evId, newPrincipalPaise, newRate, newPeriod, effDate, note ->
+                                viewModel.updateAdjustmentEvent(evId, newPrincipalPaise, newRate, newPeriod, effDate, note)
+                            },
+                            onDeleteEventOrPayment = { evId -> viewModel.deleteEventOrPaymentPermanently(evId) },
                             onReverseEvent = { evId, reason -> viewModel.reverseEvent(evId, reason) }
                         )
                     }

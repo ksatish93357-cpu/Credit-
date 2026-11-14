@@ -303,7 +303,10 @@ object InterestEngine {
             }
         }
 
-        val roundedPaise = exactInterest.setScale(0, RoundingMode.HALF_UP).longValueExact()
+        val clamped = exactInterest
+            .max(BigDecimal.ZERO)
+            .min(BigDecimal(Long.MAX_VALUE))
+        val roundedPaise = clamped.setScale(0, RoundingMode.HALF_UP).longValueExact()
         return PeriodInterestResult(
             interestPaise = maxOf(0L, roundedPaise),
             exactInterestPaise = exactInterest.max(BigDecimal.ZERO),
@@ -447,6 +450,13 @@ object InterestEngine {
 
         for (event in orderedEvents) {
             if (event.eventType == CreditEventType.CREDIT_CREATED) {
+                if (event.rateAfter.isNotBlank()) {
+                    runningRate = event.rateAfter
+                    runningRatePeriod = event.ratePeriodAfter
+                }
+                if (event.principalAfterPaise > 0L) {
+                    runningPrincipal = event.principalAfterPaise
+                }
                 replayedList.add(
                     ReplayedEventState(
                         event = event,

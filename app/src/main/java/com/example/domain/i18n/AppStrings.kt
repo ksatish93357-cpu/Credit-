@@ -105,6 +105,10 @@ data class AppStrings(
     val statusArchived: String,
     val mainCreditUpdate: String,
     val editDetails: String,
+    val editCreditTitle: String,
+    val deleteCredit: String,
+    val deleteCreditConfirmTitle: String,
+    val deleteCreditConfirmBody: String,
     val closeCredit: String,
     val reopenCredit: String,
     val shareCreditStatement: String,
@@ -133,6 +137,10 @@ data class AppStrings(
     val receiptNumber: String,
     val reverseEvent: String,
     val impactPreview: String,
+    val editPaymentTitle: String,
+    val deleteTransaction: String,
+    val deleteTransactionConfirmTitle: String,
+    val deleteTransactionConfirmBody: String,
 
     // Calculator
     val creditCalculator: String,
@@ -192,7 +200,8 @@ data class AppStrings(
     val copiedToClipboard: String,
     val noDataYet: String,
     val selectPerson: String,
-    val selectCredit: String
+    val selectCredit: String,
+    val removePhoto: String
 )
 
 fun hindiStrings(): AppStrings = AppStrings(
@@ -300,6 +309,10 @@ fun hindiStrings(): AppStrings = AppStrings(
     statusArchived = "आर्काइव्ड",
     mainCreditUpdate = "मुख्यधन / दर समायोजन",
     editDetails = "विवरण संपादित करें",
+    editCreditTitle = "पूरा क्रेडिट डेटा संपादित करें",
+    deleteCredit = "क्रेडिट हटाएं",
+    deleteCreditConfirmTitle = "स्थायी रूप से क्रेडिट हटाएं?",
+    deleteCreditConfirmBody = "इससे यह क्रेडिट और इससे जुड़े सभी भुगतान व इतिहास स्थायी रूप से हट जाएंगे।",
     closeCredit = "क्रेडिट बंद करें",
     reopenCredit = "क्रेडिट पुनः खोलें",
     shareCreditStatement = "क्रेडिट स्टेटमेंट शेयर",
@@ -327,6 +340,10 @@ fun hindiStrings(): AppStrings = AppStrings(
     receiptNumber = "रसीद नंबर",
     reverseEvent = "रिवर्स / सुधार करें",
     impactPreview = "प्रभाव पूर्वावलोकन",
+    editPaymentTitle = "भुगतान विवरण संपादित करें",
+    deleteTransaction = "डेटा हटाएं",
+    deleteTransactionConfirmTitle = "स्थायी रूप से रिकॉर्ड हटाएं?",
+    deleteTransactionConfirmBody = "यह रिकॉर्ड स्थायी रूप से हट जाएगा और शेष राशि व ब्याज की पुनः गणना की जाएगी।",
 
     creditCalculator = "क्रेडिट / ब्याज कैलकुलेटर",
     normalCalculator = "सामान्य कैलकुलेटर",
@@ -382,7 +399,8 @@ fun hindiStrings(): AppStrings = AppStrings(
     copiedToClipboard = "क्लिपबोर्ड पर कॉपी हो गया",
     noDataYet = "अभी कोई रिकॉर्ड नहीं है",
     selectPerson = "व्यक्ति चुनें",
-    selectCredit = "क्रेडिट चुनें"
+    selectCredit = "क्रेडिट चुनें",
+    removePhoto = "फ़ोटो हटाएं"
 )
 
 fun englishStrings(): AppStrings = AppStrings(
@@ -490,6 +508,10 @@ fun englishStrings(): AppStrings = AppStrings(
     statusArchived = "Archived",
     mainCreditUpdate = "Main Credit Update",
     editDetails = "Edit Details",
+    editCreditTitle = "Edit Credit Full Details",
+    deleteCredit = "Delete Credit",
+    deleteCreditConfirmTitle = "Permanently Delete Credit?",
+    deleteCreditConfirmBody = "This will permanently delete this credit and all linked payments, adjustments, and history.",
     closeCredit = "Close Credit",
     reopenCredit = "Reopen Credit",
     shareCreditStatement = "Share Credit Statement",
@@ -517,6 +539,10 @@ fun englishStrings(): AppStrings = AppStrings(
     receiptNumber = "Receipt Number",
     reverseEvent = "Reverse / Correct",
     impactPreview = "Impact Preview",
+    editPaymentTitle = "Edit Payment Details",
+    deleteTransaction = "Delete Record",
+    deleteTransactionConfirmTitle = "Permanently Delete Record?",
+    deleteTransactionConfirmBody = "This record will be permanently deleted and balances/interest will be recalculated.",
 
     creditCalculator = "Credit / Interest Calculator",
     normalCalculator = "Normal Calculator",
@@ -572,5 +598,6 @@ fun englishStrings(): AppStrings = AppStrings(
     copiedToClipboard = "Copied to clipboard",
     noDataYet = "No records yet",
     selectPerson = "Select Person",
-    selectCredit = "Select Credit"
+    selectCredit = "Select Credit",
+    removePhoto = "Remove Photo"
 )

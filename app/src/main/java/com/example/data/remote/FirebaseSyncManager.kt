@@ -283,8 +283,6 @@ class FirebaseSyncManager(
                 db.creditDao().upsert(
                     c.copy(
                         currentPrincipalPaise = snap.currentPrincipalPaise,
-                        interestRate = snap.activeRate,
-                        ratePeriod = snap.activeRatePeriod,
                         status = snap.status
                     ).toEntity()
                 )

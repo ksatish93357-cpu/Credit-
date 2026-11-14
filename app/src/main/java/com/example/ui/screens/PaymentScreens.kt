@@ -53,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.domain.engine.IndianNumberFormatter
@@ -60,8 +61,12 @@ import com.example.domain.engine.InterestEngine
 import com.example.domain.engine.LedgerDate
 import com.example.domain.engine.StatementTextGenerator
 import com.example.domain.model.AllocationMode
+import com.example.domain.model.CreditEvent
 import com.example.domain.model.CreditStatus
+import com.example.domain.model.Payment
 import com.example.domain.model.PaymentMethod
+import com.example.domain.model.PaymentType
+import com.example.domain.model.RatePeriod
 import com.example.ui.components.LedgerDateField
 import com.example.ui.theme.InterestOrange
 import com.example.ui.theme.LocalAppStrings
@@ -579,4 +584,369 @@ fun AddNormalPaymentScreen(
             }
         }
     }
+}
+
+@Composable
+fun EditPaymentDialog(
+    payment: Payment,
+    state: MainUiState,
+    onDismiss: () -> Unit,
+    onSave: (
+        paymentId: String,
+        amountPaise: Long,
+        paymentDate: LedgerDate,
+        method: PaymentMethod,
+        allocationMode: AllocationMode?,
+        note: String
+    ) -> Unit
+) {
+    val strings = LocalAppStrings.current
+    val fmt = { p: Long -> IndianNumberFormatter.formatCurrency(p, state.settings.displayDecimals, trimTrailingZerosWhenWhole = true) }
+    val linkedCredit = payment.creditId?.let { cid -> state.credits.firstOrNull { it.id == cid } }
+    val creditStart = linkedCredit?.let { InterestEngine.parseDateOnly(it.startDate) }
+
+    var amountText by remember(payment.id) {
+        mutableStateOf(IndianNumberFormatter.paiseToPlainRupeesString(payment.amountPaise))
+    }
+    var paymentDate by remember(payment.id) {
+        mutableStateOf(LedgerDate.parseOrNull(payment.paymentDate) ?: LedgerDate.todayLocal())
+    }
+    var method by remember(payment.id) { mutableStateOf(payment.paymentMethod) }
+    var allocationMode by remember(payment.id) {
+        mutableStateOf(payment.allocationMode ?: AllocationMode.PRINCIPAL_ADJUSTMENT)
+    }
+    var noteText by remember(payment.id) { mutableStateOf(payment.note) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+
+    val enteredPaise = IndianNumberFormatter.rupeesInputToPaiseOrNull(amountText) ?: 0L
+    val preSnapshot = remember(linkedCredit, state.events, payment.id, paymentDate) {
+        if (linkedCredit == null || creditStart == null || paymentDate < creditStart) null
+        else runCatching {
+            InterestEngine.calculateCreditBalanceAsOfDate(
+                linkedCredit,
+                state.events.filter { it.creditId == linkedCredit.id && it.id != payment.id },
+                paymentDate
+            )
+        }.getOrNull()
+    }
+    val allocPreview = remember(preSnapshot, enteredPaise, allocationMode, payment.paymentType) {
+        if (payment.paymentType != PaymentType.CREDIT || preSnapshot == null || enteredPaise <= 0L) null
+        else if (allocationMode == AllocationMode.INTEREST_FIRST) {
+            InterestEngine.applyInterestFirstPayment(
+                preSnapshot.currentPrincipalPaise,
+                preSnapshot.accruedUnpaidInterestPaise,
+                enteredPaise
+            )
+        } else {
+            InterestEngine.applyMisradhanLessPayment(
+                preSnapshot.currentPrincipalPaise,
+                preSnapshot.accruedUnpaidInterestPaise,
+                enteredPaise
+            )
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(strings.editPaymentTitle) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (linkedCredit != null) {
+                    Text(
+                        "${linkedCredit.creditNumber} • ${payment.receiptNumber}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = PrincipalBlue
+                    )
+                } else {
+                    Text(
+                        "${strings.normalPaymentsLabel} • ${payment.receiptNumber}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = InterestOrange
+                    )
+                }
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it; errorText = null },
+                    label = { Text(strings.paymentAmount) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("edit_payment_amount_input")
+                )
+                LedgerDateField(
+                    label = strings.paymentDate,
+                    date = paymentDate,
+                    onDateSelected = { d ->
+                        paymentDate = d
+                        errorText = if (creditStart != null && d < creditStart) {
+                            "Cannot precede credit start date (${creditStart.toDisplayString()})"
+                        } else null
+                    },
+                    testTag = "edit_payment_date_input"
+                )
+                Text(strings.paymentMethod, style = MaterialTheme.typography.labelMedium)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    PaymentMethod.entries.forEach { pm ->
+                        FilterChip(
+                            selected = method == pm,
+                            onClick = { method = pm },
+                            label = { Text(StatementTextGenerator.formatPaymentMethod(pm, state.settings.language), maxLines = 1) }
+                        )
+                    }
+                }
+                if (payment.paymentType == PaymentType.CREDIT) {
+                    Text(strings.allocationMode, style = MaterialTheme.typography.labelMedium)
+                    AllocationModeOptionCard(
+                        selected = allocationMode == AllocationMode.PRINCIPAL_ADJUSTMENT,
+                        title = strings.modePrincipalAdjustment,
+                        description = strings.modePrincipalAdjustmentDesc,
+                        tag = "edit_alloc_principal_adjustment",
+                        onClick = { allocationMode = AllocationMode.PRINCIPAL_ADJUSTMENT }
+                    )
+                    AllocationModeOptionCard(
+                        selected = allocationMode == AllocationMode.INTEREST_FIRST,
+                        title = strings.modeInterestFirst,
+                        description = strings.modeInterestFirstDesc,
+                        tag = "edit_alloc_interest_first",
+                        onClick = { allocationMode = AllocationMode.INTEREST_FIRST }
+                    )
+                    if (allocPreview != null) {
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(strings.paymentPreview, style = MaterialTheme.typography.labelLarge)
+                                Text(
+                                    "${strings.misradhan}: ${fmt(allocPreview.misradhanBeforePaise)} → New Principal: ${fmt(allocPreview.principalAfterPaise)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (allocPreview.unpaidInterestAfterPaise > 0L) {
+                                    Text(
+                                        "Remaining Unpaid Interest: ${fmt(allocPreview.unpaidInterestAfterPaise)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = InterestOrange
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = { noteText = it },
+                    label = { Text(strings.notes) },
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth().testTag("edit_payment_note_input")
+                )
+                if (errorText != null) {
+                    Text(errorText!!, color = OverdueRed, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val paise = IndianNumberFormatter.rupeesInputToPaiseOrNull(amountText)
+                    when {
+                        paise == null || paise <= 0L -> errorText = "Enter positive payment amount"
+                        payment.paymentType == PaymentType.CREDIT && creditStart != null && paymentDate < creditStart ->
+                            errorText = "Cannot precede credit start date (${creditStart.toDisplayString()})"
+                        else -> onSave(
+                            payment.id,
+                            paise,
+                            paymentDate,
+                            method,
+                            if (payment.paymentType == PaymentType.CREDIT) allocationMode else null,
+                            noteText
+                        )
+                    }
+                },
+                modifier = Modifier.testTag("save_edit_payment_btn")
+            ) { Text(strings.save) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(strings.cancel) }
+        }
+    )
+}
+
+@Composable
+fun EditAdjustmentDialog(
+    event: CreditEvent,
+    state: MainUiState,
+    onDismiss: () -> Unit,
+    onSave: (
+        eventId: String,
+        newPrincipalPaise: Long,
+        newRate: String,
+        newRatePeriod: RatePeriod,
+        effectiveDate: LedgerDate,
+        note: String
+    ) -> Unit
+) {
+    val strings = LocalAppStrings.current
+    val fmt = { p: Long -> IndianNumberFormatter.formatCurrency(p, state.settings.displayDecimals, trimTrailingZerosWhenWhole = true) }
+    val credit = state.credits.firstOrNull { it.id == event.creditId }
+    val creditStart = credit?.let { InterestEngine.parseDateOnly(it.startDate) } ?: LedgerDate.todayLocal()
+
+    var effectiveDate by remember(event.id) {
+        mutableStateOf(LedgerDate.parseOrNull(event.effectiveDate) ?: LedgerDate.todayLocal())
+    }
+    var principalText by remember(event.id) {
+        mutableStateOf(IndianNumberFormatter.paiseToPlainRupeesString(event.principalAfterPaise))
+    }
+    var rateText by remember(event.id) { mutableStateOf(event.rateAfter) }
+    var ratePeriod by remember(event.id) { mutableStateOf(event.ratePeriodAfter) }
+    var noteText by remember(event.id) { mutableStateOf(event.note) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+
+    val preSnapshot = remember(credit, state.events, event.id, effectiveDate) {
+        if (credit == null || effectiveDate < creditStart) null
+        else runCatching {
+            InterestEngine.calculateCreditBalanceAsOfDate(
+                credit,
+                state.events.filter { it.creditId == credit.id && it.id != event.id },
+                effectiveDate
+            )
+        }.getOrNull()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${strings.edit} — ${strings.mainCreditUpdate}") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                LedgerDateField(
+                    label = "Effective Date",
+                    date = effectiveDate,
+                    onDateSelected = { d ->
+                        effectiveDate = d
+                        errorText = if (d < creditStart) "Cannot precede credit start date (${creditStart.toDisplayString()})" else null
+                    },
+                    testTag = "edit_adj_date_input"
+                )
+                OutlinedTextField(
+                    value = principalText,
+                    onValueChange = { principalText = it; errorText = null },
+                    label = { Text("New Principal (₹)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("edit_adj_principal_input")
+                )
+                OutlinedTextField(
+                    value = rateText,
+                    onValueChange = { rateText = it; errorText = null },
+                    label = { Text("New Interest Rate (%)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("edit_adj_rate_input")
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = ratePeriod == RatePeriod.MONTHLY,
+                        onClick = { ratePeriod = RatePeriod.MONTHLY },
+                        label = { Text(strings.monthly) }
+                    )
+                    FilterChip(
+                        selected = ratePeriod == RatePeriod.YEARLY,
+                        onClick = { ratePeriod = RatePeriod.YEARLY },
+                        label = { Text(strings.yearly) }
+                    )
+                }
+                if (preSnapshot != null) {
+                    Text(
+                        "Before adjustment: Principal ${fmt(preSnapshot.currentPrincipalPaise)}, Interest ${fmt(preSnapshot.accruedUnpaidInterestPaise)}, Rate ${preSnapshot.activeRate}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = { noteText = it },
+                    label = { Text(strings.notes) },
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (errorText != null) {
+                    Text(errorText!!, color = OverdueRed, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val paise = IndianNumberFormatter.rupeesInputToPaiseOrNull(principalText)
+                    val rateBd = runCatching { java.math.BigDecimal(rateText.trim()) }.getOrNull()
+                    when {
+                        effectiveDate < creditStart -> errorText = "Cannot precede credit start date"
+                        paise == null || paise < 0L -> errorText = "Enter valid non-negative principal"
+                        rateBd == null || rateBd < java.math.BigDecimal.ZERO -> errorText = "Enter valid non-negative rate"
+                        else -> onSave(event.id, paise, rateText.trim(), ratePeriod, effectiveDate, noteText)
+                    }
+                },
+                modifier = Modifier.testTag("save_edit_adj_btn")
+            ) { Text(strings.save) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(strings.cancel) }
+        }
+    )
+}
+
+@Composable
+fun DeleteEventConfirmDialog(
+    event: CreditEvent,
+    state: MainUiState,
+    onDismiss: () -> Unit,
+    onConfirmDelete: () -> Unit
+) {
+    val strings = LocalAppStrings.current
+    val fmt = { p: Long -> IndianNumberFormatter.formatCurrency(p, state.settings.displayDecimals, trimTrailingZerosWhenWhole = true) }
+    val credit = state.credits.firstOrNull { it.id == event.creditId }
+    val impactText = remember(event.id, credit, state.events) {
+        if (credit == null) {
+            "${event.eventType.name}: ${fmt(event.amountPaise)}"
+        } else {
+            val cEvents = state.events.filter { it.creditId == credit.id }
+            val today = maxOf(LedgerDate.todayLocal(), InterestEngine.parseDateOnly(credit.startDate))
+            val before = runCatching { InterestEngine.calculateCreditBalanceAsOfDate(credit, cEvents, today) }.getOrNull()
+            val after = runCatching { InterestEngine.calculateCreditBalanceAsOfDate(credit, cEvents.filter { it.id != event.id }, today) }.getOrNull()
+            if (before != null && after != null) {
+                "Principal: ${fmt(before.currentPrincipalPaise)} → ${fmt(after.currentPrincipalPaise)}\nMisradhan: ${fmt(before.misradhanPaise)} → ${fmt(after.misradhanPaise)}"
+            } else ""
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(strings.deleteTransactionConfirmTitle) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(strings.deleteTransactionConfirmBody)
+                if (impactText.isNotBlank()) {
+                    Text(impactText, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirmDelete,
+                colors = ButtonDefaults.buttonColors(containerColor = OverdueRed),
+                modifier = Modifier.testTag("confirm_delete_event_btn")
+            ) { Text(strings.delete) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(strings.cancel) }
+        }
+    )
 }

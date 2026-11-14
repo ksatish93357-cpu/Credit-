@@ -332,8 +332,6 @@ class JsonBackupManager(private val db: CreditLoggerDatabase) {
                 db.creditDao().upsert(
                     credit.copy(
                         currentPrincipalPaise = snap.currentPrincipalPaise,
-                        interestRate = snap.activeRate,
-                        ratePeriod = snap.activeRatePeriod,
                         status = snap.status
                     ).toEntity()
                 )

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Payment
@@ -87,11 +88,18 @@ import androidx.compose.ui.unit.dp
 import com.example.domain.engine.IndianNumberFormatter
 import com.example.domain.engine.LedgerDate
 import com.example.domain.engine.StatementTextGenerator
+import com.example.domain.model.AllocationMode
+import com.example.domain.model.Credit
+import com.example.domain.model.CreditEvent
+import com.example.domain.model.CreditEventType
 import com.example.domain.model.CreditStatus
+import com.example.domain.model.Payment
+import com.example.domain.model.PaymentMethod
 import com.example.domain.model.PaymentType
 import com.example.domain.model.Person
 import com.example.domain.model.ProfileFilterOption
 import com.example.domain.model.ProfileSortOption
+import com.example.domain.model.RatePeriod
 import com.example.ui.components.PersonAvatar
 import com.example.ui.components.SemanticKpiCard
 import com.example.ui.theme.InterestOrange
@@ -305,6 +313,24 @@ fun ProfileDetailScreen(
     onAddCreditPayment: (String) -> Unit,
     onAddNormalPayment: (String) -> Unit,
     onOpenCreditDetail: (String) -> Unit,
+    onDeleteCredit: (String) -> Unit,
+    onEditPaymentFull: (
+        paymentId: String,
+        amountPaise: Long,
+        paymentDate: LedgerDate,
+        method: PaymentMethod,
+        allocationMode: AllocationMode?,
+        note: String
+    ) -> Unit,
+    onEditAdjustmentEvent: (
+        eventId: String,
+        newPrincipalPaise: Long,
+        newRate: String,
+        newRatePeriod: RatePeriod,
+        effectiveDate: LedgerDate,
+        note: String
+    ) -> Unit,
+    onDeleteEventOrPayment: (String) -> Unit,
     onShareProfileStatement: (String) -> Unit,
     onExportProfileJson: (String) -> Unit
 ) {
@@ -324,11 +350,17 @@ fun ProfileDetailScreen(
     val fmt = { p: Long -> IndianNumberFormatter.formatCurrency(p, state.settings.displayDecimals, trimTrailingZerosWhenWhole = true) }
     var selectedTab by remember { mutableIntStateOf(0) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var creditToDelete by remember { mutableStateOf<Credit?>(null) }
+    var paymentToEdit by remember { mutableStateOf<Payment?>(null) }
+    var adjustmentToEdit by remember { mutableStateOf<CreditEvent?>(null) }
+    var eventToDelete by remember { mutableStateOf<CreditEvent?>(null) }
 
     val personCredits = state.credits.filter { it.personId == personId }
     val creditPayments = state.payments.filter { it.personId == personId && it.paymentType == PaymentType.CREDIT }
     val normalPayments = state.payments.filter { it.personId == personId && it.paymentType == PaymentType.NORMAL }
     val personEvents = state.events.filter { it.personId == personId }
+    val paymentMap = remember(state.payments) { state.payments.associateBy { it.id } }
+    val eventMap = remember(state.events) { state.events.associateBy { it.id } }
 
     Scaffold(
         topBar = {
@@ -348,6 +380,9 @@ fun ProfileDetailScreen(
                     }
                     IconButton(onClick = { onEditPerson(person) }, modifier = Modifier.testTag("profile_edit_btn")) {
                         Icon(Icons.Default.Edit, contentDescription = strings.editProfile)
+                    }
+                    IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.testTag("profile_top_delete_btn")) {
+                        Icon(Icons.Default.DeleteForever, contentDescription = strings.deleteProfile, tint = OverdueRed)
                     }
                 }
             )
@@ -540,11 +575,20 @@ fun ProfileDetailScreen(
                                                 Text("${strings.accruedInterest}: ${fmt(snap.accruedUnpaidInterestPaise)}", style = MaterialTheme.typography.bodySmall, color = InterestOrange)
                                             }
                                             val startDisp = credit?.let { LedgerDate.parseOrNull(it.startDate)?.toDisplayString() } ?: ""
-                                            Text(
-                                                "${snap.activeRate}% ${StatementTextGenerator.formatRatePeriod(snap.activeRatePeriod, state.settings.language)} • $startDisp",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    "${snap.activeRate}% ${StatementTextGenerator.formatRatePeriod(snap.activeRatePeriod, state.settings.language)} • $startDisp",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                if (credit != null) {
+                                                    TextButton(onClick = { creditToDelete = credit }) {
+                                                        Icon(Icons.Default.Delete, contentDescription = null, tint = OverdueRed, modifier = Modifier.size(16.dp))
+                                                        Spacer(Modifier.size(4.dp))
+                                                        Text(strings.delete, color = OverdueRed)
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -557,6 +601,22 @@ fun ProfileDetailScreen(
                                 items(creditPayments, key = { it.id }) { pay ->
                                     val cNum = personCredits.firstOrNull { it.id == pay.creditId }?.creditNumber ?: ""
                                     val dDisp = LedgerDate.parseOrNull(pay.paymentDate)?.toDisplayString() ?: pay.paymentDate
+                                    val deleteEventObj = eventMap[pay.id] ?: CreditEvent(
+                                        id = pay.id,
+                                        personId = pay.personId,
+                                        creditId = pay.creditId ?: "NORMAL",
+                                        eventType = CreditEventType.CREDIT_PAYMENT,
+                                        effectiveDate = pay.paymentDate,
+                                        createdAt = pay.createdAt,
+                                        updatedAt = pay.updatedAt,
+                                        principalBeforePaise = 0L,
+                                        interestBeforePaise = 0L,
+                                        misradhanBeforePaise = 0L,
+                                        amountPaise = pay.amountPaise,
+                                        principalAfterPaise = 0L,
+                                        rateAfter = "0",
+                                        ratePeriodAfter = RatePeriod.MONTHLY
+                                    )
                                     Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -566,6 +626,23 @@ fun ProfileDetailScreen(
                                             Text("${pay.receiptNumber} • ${pay.status}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             if (pay.systemNote.isNotBlank()) {
                                                 Text(pay.systemNote, style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            if (pay.note.isNotBlank()) {
+                                                Text("Note: ${pay.note}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                                if (pay.status != "REVERSED") {
+                                                    TextButton(onClick = { paymentToEdit = pay }) {
+                                                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                        Spacer(Modifier.size(4.dp))
+                                                        Text(strings.edit)
+                                                    }
+                                                }
+                                                TextButton(onClick = { eventToDelete = deleteEventObj }) {
+                                                    Icon(Icons.Default.Delete, contentDescription = null, tint = OverdueRed, modifier = Modifier.size(16.dp))
+                                                    Spacer(Modifier.size(4.dp))
+                                                    Text(strings.delete, color = OverdueRed)
+                                                }
                                             }
                                         }
                                     }
@@ -578,6 +655,22 @@ fun ProfileDetailScreen(
                             } else {
                                 items(normalPayments, key = { it.id }) { pay ->
                                     val dDisp = LedgerDate.parseOrNull(pay.paymentDate)?.toDisplayString() ?: pay.paymentDate
+                                    val deleteEventObj = eventMap[pay.id] ?: CreditEvent(
+                                        id = pay.id,
+                                        personId = pay.personId,
+                                        creditId = "NORMAL",
+                                        eventType = CreditEventType.NORMAL_PAYMENT,
+                                        effectiveDate = pay.paymentDate,
+                                        createdAt = pay.createdAt,
+                                        updatedAt = pay.updatedAt,
+                                        principalBeforePaise = 0L,
+                                        interestBeforePaise = 0L,
+                                        misradhanBeforePaise = 0L,
+                                        amountPaise = pay.amountPaise,
+                                        principalAfterPaise = 0L,
+                                        rateAfter = "0",
+                                        ratePeriodAfter = RatePeriod.MONTHLY
+                                    )
                                     Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -586,6 +679,20 @@ fun ProfileDetailScreen(
                                             }
                                             Text(strings.normalPaymentBanner, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             if (pay.note.isNotBlank()) Text(pay.note, style = MaterialTheme.typography.bodySmall)
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                                if (pay.status != "REVERSED") {
+                                                    TextButton(onClick = { paymentToEdit = pay }) {
+                                                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                        Spacer(Modifier.size(4.dp))
+                                                        Text(strings.edit)
+                                                    }
+                                                }
+                                                TextButton(onClick = { eventToDelete = deleteEventObj }) {
+                                                    Icon(Icons.Default.Delete, contentDescription = null, tint = OverdueRed, modifier = Modifier.size(16.dp))
+                                                    Spacer(Modifier.size(4.dp))
+                                                    Text(strings.delete, color = OverdueRed)
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -597,6 +704,9 @@ fun ProfileDetailScreen(
                             } else {
                                 items(personEvents, key = { it.id }) { ev ->
                                     val dDisp = LedgerDate.parseOrNull(ev.effectiveDate)?.toDisplayString() ?: ev.effectiveDate
+                                    val linkedPay = paymentMap[ev.id]
+                                    val isEditableAdj = !ev.isReversed &&
+                                        (ev.eventType == CreditEventType.PRINCIPAL_ADJUSTMENT || ev.eventType == CreditEventType.INTEREST_RATE_UPDATE)
                                     Card(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -605,6 +715,28 @@ fun ProfileDetailScreen(
                                             }
                                             if (ev.systemNote.isNotBlank()) Text(ev.systemNote, style = MaterialTheme.typography.bodySmall)
                                             if (ev.note.isNotBlank()) Text(ev.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            if (ev.eventType != CreditEventType.CREDIT_CREATED) {
+                                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                                    if (linkedPay != null && !ev.isReversed) {
+                                                        TextButton(onClick = { paymentToEdit = linkedPay }) {
+                                                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                            Spacer(Modifier.size(4.dp))
+                                                            Text(strings.edit)
+                                                        }
+                                                    } else if (isEditableAdj) {
+                                                        TextButton(onClick = { adjustmentToEdit = ev }) {
+                                                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                            Spacer(Modifier.size(4.dp))
+                                                            Text(strings.edit)
+                                                        }
+                                                    }
+                                                    TextButton(onClick = { eventToDelete = ev }) {
+                                                        Icon(Icons.Default.Delete, contentDescription = null, tint = OverdueRed, modifier = Modifier.size(16.dp))
+                                                        Spacer(Modifier.size(4.dp))
+                                                        Text(strings.delete, color = OverdueRed)
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -690,6 +822,64 @@ fun ProfileDetailScreen(
             }
         )
     }
+
+    if (creditToDelete != null) {
+        val c = creditToDelete!!
+        AlertDialog(
+            onDismissRequest = { creditToDelete = null },
+            title = { Text(strings.deleteCreditConfirmTitle) },
+            text = { Text("${c.creditNumber} — ${strings.deleteCreditConfirmBody}") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        creditToDelete = null
+                        onDeleteCredit(c.id)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = OverdueRed)
+                ) { Text(strings.delete) }
+            },
+            dismissButton = {
+                TextButton(onClick = { creditToDelete = null }) { Text(strings.cancel) }
+            }
+        )
+    }
+
+    if (paymentToEdit != null) {
+        EditPaymentDialog(
+            payment = paymentToEdit!!,
+            state = state,
+            onDismiss = { paymentToEdit = null },
+            onSave = { pid, amountPaise, date, method, mode, note ->
+                onEditPaymentFull(pid, amountPaise, date, method, mode, note)
+                paymentToEdit = null
+            }
+        )
+    }
+
+    if (adjustmentToEdit != null) {
+        EditAdjustmentDialog(
+            event = adjustmentToEdit!!,
+            state = state,
+            onDismiss = { adjustmentToEdit = null },
+            onSave = { evId, newPrincipalPaise, newRate, newPeriod, effDate, note ->
+                onEditAdjustmentEvent(evId, newPrincipalPaise, newRate, newPeriod, effDate, note)
+                adjustmentToEdit = null
+            }
+        )
+    }
+
+    if (eventToDelete != null) {
+        val target = eventToDelete!!
+        DeleteEventConfirmDialog(
+            event = target,
+            state = state,
+            onDismiss = { eventToDelete = null },
+            onConfirmDelete = {
+                onDeleteEventOrPayment(target.id)
+                eventToDelete = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -722,7 +912,7 @@ fun AddEditPersonDialog(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     PersonAvatar(name = name.ifBlank { "?" }, photoRef = photoUri, size = 52.dp)
                     OutlinedButton(
@@ -733,6 +923,11 @@ fun AddEditPersonDialog(
                         Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.size(6.dp))
                         Text(strings.selectPhoto)
+                    }
+                    if (photoUri.isNotBlank()) {
+                        TextButton(onClick = { photoUri = "" }) {
+                            Text(strings.removePhoto, color = OverdueRed)
+                        }
                     }
                 }
                 OutlinedTextField(

@@ -5,6 +5,7 @@ import androidx.room.withTransaction
 import com.example.data.local.CreditLoggerDatabase
 import com.example.data.local.toDomain
 import com.example.data.local.toEntity
+import com.example.domain.engine.IndianNumberFormatter
 import com.example.domain.engine.InterestEngine
 import com.example.domain.engine.LedgerDate
 import com.example.domain.engine.StatementTextGenerator
@@ -268,6 +269,136 @@ class LedgerRepository(
                 ).toEntity()
             )
         }
+    }
+
+    suspend fun updateCreditFullDetails(
+        creditId: String,
+        creditNumber: String,
+        originalPrincipalPaise: Long,
+        interestRate: String,
+        ratePeriod: RatePeriod,
+        interestMethod: InterestMethod,
+        startDate: LedgerDate,
+        dueDate: LedgerDate?,
+        note: String
+    ) = writeMutex.withLock {
+        val existing = db.creditDao().getById(creditId)?.toDomain()
+            ?: throw IllegalArgumentException("Credit not found")
+        val cleanNumber = creditNumber.trim()
+        require(cleanNumber.isNotEmpty()) { "Credit number is required" }
+        require(originalPrincipalPaise > 0L) { "Principal must be positive" }
+        val rateBd = InterestEngine.parseRateOrZero(interestRate)
+        require(rateBd >= java.math.BigDecimal.ZERO) { "Rate cannot be negative" }
+        if (dueDate != null) {
+            require(dueDate >= startDate) { "Due date cannot be before start date" }
+        }
+        val duplicate = db.creditDao().getByCreditNumber(cleanNumber)
+        require(duplicate == null || duplicate.id == creditId) {
+            "Credit number '$cleanNumber' already exists"
+        }
+
+        val existingEvents = db.creditEventDao().getByCreditId(creditId).map { it.toDomain() }
+        val reversedIds = existingEvents.mapNotNull { it.reversesEventId }.toSet()
+        val earliestNonCreateEventDate = existingEvents
+            .filter {
+                !it.isReversed &&
+                    it.id !in reversedIds &&
+                    it.eventType != CreditEventType.CREDIT_CREATED &&
+                    it.eventType != CreditEventType.CORRECTION_REVERSAL
+            }
+            .mapNotNull { LedgerDate.parseOrNull(it.effectiveDate) }
+            .minOrNull()
+        if (earliestNonCreateEventDate != null && startDate > earliestNonCreateEventDate) {
+            throw IllegalArgumentException(
+                "Start date cannot be after existing event on ${earliestNonCreateEventDate.toDisplayString()}"
+            )
+        }
+
+        val now = System.currentTimeMillis()
+        val updatedCredit = existing.copy(
+            creditNumber = cleanNumber,
+            originalPrincipalPaise = originalPrincipalPaise,
+            interestRate = interestRate.trim(),
+            ratePeriod = ratePeriod,
+            interestMethod = interestMethod,
+            startDate = startDate.toIsoString(),
+            dueDate = dueDate?.toIsoString(),
+            note = note.trim(),
+            updatedAt = now
+        )
+        val createdEvent = existingEvents.firstOrNull { it.eventType == CreditEventType.CREDIT_CREATED }
+        val updatedCreatedEvent = (createdEvent ?: CreditEvent(
+            id = UUID.randomUUID().toString(),
+            personId = existing.personId,
+            creditId = creditId,
+            eventType = CreditEventType.CREDIT_CREATED,
+            effectiveDate = startDate.toIsoString(),
+            createdAt = existing.createdAt,
+            updatedAt = now,
+            principalBeforePaise = 0L,
+            interestBeforePaise = 0L,
+            misradhanBeforePaise = 0L,
+            amountPaise = originalPrincipalPaise,
+            principalAfterPaise = originalPrincipalPaise,
+            interestAfterPaise = 0L,
+            rateAfter = interestRate.trim(),
+            ratePeriodAfter = ratePeriod,
+            systemNote = "Credit Created: $cleanNumber",
+            note = note.trim()
+        )).copy(
+            effectiveDate = startDate.toIsoString(),
+            amountPaise = originalPrincipalPaise,
+            principalAfterPaise = originalPrincipalPaise,
+            rateAfter = interestRate.trim(),
+            ratePeriodAfter = ratePeriod,
+            systemNote = "Credit Created: $cleanNumber",
+            note = note.trim(),
+            updatedAt = now
+        )
+
+        db.withTransaction {
+            db.creditDao().upsert(updatedCredit.toEntity())
+            db.creditEventDao().upsert(updatedCreatedEvent.toEntity())
+            recalculateCreditTimelineInTransaction(creditId, now)
+            db.auditLogDao().insert(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    entityType = "CREDIT",
+                    entityId = creditId,
+                    action = "UPDATE_FULL",
+                    oldData = "${existing.creditNumber} | ${existing.originalPrincipalPaise} | ${existing.interestRate}% ${existing.ratePeriod.name} | ${existing.startDate}",
+                    newData = "$cleanNumber | $originalPrincipalPaise | ${interestRate.trim()}% ${ratePeriod.name} | ${startDate.toIsoString()}",
+                    timestamp = now
+                ).toEntity()
+            )
+        }
+    }
+
+    suspend fun deleteCreditPermanently(creditId: String): List<String> = writeMutex.withLock {
+        val existing = db.creditDao().getById(creditId)?.toDomain() ?: return@withLock emptyList()
+        val now = System.currentTimeMillis()
+        val affectedReminderIds = db.reminderDao().getAll()
+            .filter { it.creditId == creditId }
+            .map { it.id }
+        db.withTransaction {
+            db.reminderDao().deleteByCreditId(creditId)
+            db.adjustmentDao().deleteByCreditId(creditId)
+            db.paymentDao().deleteByCreditId(creditId)
+            db.creditEventDao().deleteByCreditId(creditId)
+            db.creditDao().deleteById(creditId)
+            db.auditLogDao().insert(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    entityType = "CREDIT",
+                    entityId = creditId,
+                    action = "DELETE_CREDIT",
+                    oldData = "${existing.creditNumber} | principal=${existing.originalPrincipalPaise}",
+                    newData = "",
+                    timestamp = now
+                ).toEntity()
+            )
+        }
+        affectedReminderIds
     }
 
     suspend fun setCreditArchived(creditId: String, archived: Boolean) = writeMutex.withLock {
@@ -581,7 +712,7 @@ class LedgerRepository(
             interestAfterPaise = preview.accruedInterestToDatePaise,
             rateAfter = preview.newRate,
             ratePeriodAfter = preview.newRatePeriod,
-            systemNote = "Terms updated: Principal ${preview.oldPrincipalPaise / 100} -> ${preview.newPrincipalPaise / 100}, Rate ${preview.oldRate}% -> ${preview.newRate}%",
+            systemNote = "Terms updated: Principal ${IndianNumberFormatter.formatCompactCurrency(preview.oldPrincipalPaise)} -> ${IndianNumberFormatter.formatCompactCurrency(preview.newPrincipalPaise)}, Rate ${preview.oldRate}% -> ${preview.newRate}%",
             note = note.trim()
         )
 
@@ -625,6 +756,167 @@ class LedgerRepository(
                     action = "EDIT_NOTE",
                     oldData = payment.note,
                     newData = updatedPayment.note,
+                    timestamp = now
+                ).toEntity()
+            )
+        }
+    }
+
+    suspend fun updatePaymentFull(
+        paymentId: String,
+        amountPaise: Long,
+        paymentDate: LedgerDate,
+        paymentMethod: PaymentMethod,
+        allocationMode: AllocationMode?,
+        note: String
+    ) = writeMutex.withLock {
+        require(amountPaise > 0L) { "Payment amount must be positive" }
+        val payment = db.paymentDao().getById(paymentId)?.toDomain()
+            ?: throw IllegalArgumentException("Payment not found")
+        val existingEvent = db.creditEventDao().getById(paymentId)?.toDomain()
+        val creditId = payment.creditId
+        if (payment.paymentType == PaymentType.CREDIT && creditId != null) {
+            val credit = db.creditDao().getById(creditId)?.toDomain()
+                ?: throw IllegalArgumentException("Linked credit not found")
+            val creditStart = InterestEngine.parseDateOnly(credit.startDate)
+            require(paymentDate >= creditStart) {
+                "Payment date (${paymentDate.toDisplayString()}) cannot be earlier than credit start date (${creditStart.toDisplayString()})."
+            }
+        }
+        val now = System.currentTimeMillis()
+        val finalMode = if (payment.paymentType == PaymentType.CREDIT) {
+            allocationMode ?: payment.allocationMode ?: AllocationMode.PRINCIPAL_ADJUSTMENT
+        } else {
+            null
+        }
+        val updatedPayment = payment.copy(
+            amountPaise = amountPaise,
+            paymentDate = paymentDate.toIsoString(),
+            paymentMethod = paymentMethod,
+            allocationMode = finalMode,
+            note = note.trim(),
+            updatedAt = now
+        )
+        val updatedEvent = existingEvent?.copy(
+            effectiveDate = paymentDate.toIsoString(),
+            amountPaise = amountPaise,
+            paymentMethod = paymentMethod,
+            allocationMode = finalMode,
+            note = note.trim(),
+            updatedAt = now
+        )
+        db.withTransaction {
+            db.paymentDao().upsert(updatedPayment.toEntity())
+            if (updatedEvent != null) {
+                db.creditEventDao().upsert(updatedEvent.toEntity())
+            }
+            if (payment.paymentType == PaymentType.CREDIT && creditId != null) {
+                recalculateCreditTimelineInTransaction(creditId, now)
+            }
+            db.auditLogDao().insert(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    entityType = "PAYMENT",
+                    entityId = paymentId,
+                    action = "UPDATE_PAYMENT",
+                    oldData = "amount=${payment.amountPaise}, date=${payment.paymentDate}, method=${payment.paymentMethod.name}",
+                    newData = "amount=$amountPaise, date=${paymentDate.toIsoString()}, method=${paymentMethod.name}",
+                    timestamp = now
+                ).toEntity()
+            )
+        }
+    }
+
+    suspend fun updateAdjustmentEvent(
+        eventId: String,
+        newPrincipalPaise: Long,
+        newRate: String,
+        newRatePeriod: RatePeriod,
+        effectiveDate: LedgerDate,
+        note: String
+    ) = writeMutex.withLock {
+        val event = db.creditEventDao().getById(eventId)?.toDomain()
+            ?: throw IllegalArgumentException("Event not found")
+        require(event.eventType == CreditEventType.PRINCIPAL_ADJUSTMENT || event.eventType == CreditEventType.INTEREST_RATE_UPDATE) {
+            "Only principal/rate adjustment events can be edited here"
+        }
+        require(newPrincipalPaise >= 0L) { "Principal cannot be negative" }
+        val rateBd = InterestEngine.parseRateOrZero(newRate)
+        require(rateBd >= java.math.BigDecimal.ZERO) { "Rate cannot be negative" }
+        val credit = db.creditDao().getById(event.creditId)?.toDomain()
+            ?: throw IllegalArgumentException("Credit not found")
+        val creditStart = InterestEngine.parseDateOnly(credit.startDate)
+        require(effectiveDate >= creditStart) {
+            "Effective date cannot be earlier than credit start date"
+        }
+
+        val now = System.currentTimeMillis()
+        val updatedEvent = event.copy(
+            effectiveDate = effectiveDate.toIsoString(),
+            principalAfterPaise = newPrincipalPaise,
+            rateAfter = newRate.trim(),
+            ratePeriodAfter = newRatePeriod,
+            note = note.trim(),
+            updatedAt = now
+        )
+        val existingAdj = db.adjustmentDao().getById(eventId)?.toDomain()
+        val updatedAdj = existingAdj?.copy(
+            effectiveDate = effectiveDate.toIsoString(),
+            newPrincipalPaise = newPrincipalPaise,
+            newRate = newRate.trim(),
+            newRatePeriod = newRatePeriod,
+            note = note.trim(),
+            updatedAt = now
+        )
+
+        db.withTransaction {
+            db.creditEventDao().upsert(updatedEvent.toEntity())
+            if (updatedAdj != null) {
+                db.adjustmentDao().upsert(updatedAdj.toEntity())
+            }
+            recalculateCreditTimelineInTransaction(event.creditId, now)
+            db.auditLogDao().insert(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    entityType = "CREDIT_ADJUSTMENT",
+                    entityId = eventId,
+                    action = "UPDATE_ADJUSTMENT",
+                    oldData = "principal=${event.principalAfterPaise}, rate=${event.rateAfter}, eff=${event.effectiveDate}",
+                    newData = "principal=$newPrincipalPaise, rate=${newRate.trim()}, eff=${effectiveDate.toIsoString()}",
+                    timestamp = now
+                ).toEntity()
+            )
+        }
+    }
+
+    suspend fun deleteEventOrPaymentPermanently(eventId: String) = writeMutex.withLock {
+        val event = db.creditEventDao().getById(eventId)?.toDomain()
+        val payment = db.paymentDao().getById(eventId)?.toDomain()
+        if (event == null && payment == null) return@withLock
+        if (event != null) {
+            require(event.eventType != CreditEventType.CREDIT_CREATED) {
+                "Cannot delete credit creation event directly; delete the credit instead."
+            }
+        }
+        val now = System.currentTimeMillis()
+        val creditId = event?.creditId ?: payment?.creditId
+
+        db.withTransaction {
+            db.creditEventDao().deleteReversalsForEvent(eventId)
+            db.creditEventDao().deleteById(eventId)
+            db.paymentDao().deleteById(eventId)
+            db.adjustmentDao().deleteById(eventId)
+            if (!creditId.isNullOrBlank() && creditId != "NORMAL") {
+                recalculateCreditTimelineInTransaction(creditId, now)
+            }
+            db.auditLogDao().insert(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    entityType = if (payment != null) "PAYMENT" else "EVENT",
+                    entityId = eventId,
+                    action = "DELETE_PERMANENT",
+                    oldData = "type=${event?.eventType?.name ?: payment?.paymentType?.name}, amount=${event?.amountPaise ?: payment?.amountPaise}",
+                    newData = "",
                     timestamp = now
                 ).toEntity()
             )
@@ -694,11 +986,12 @@ class LedgerRepository(
 
     /**
      * Replays all non-reversed events for [creditId] up to today and updates stored snapshots
-     * and the CreditEntity's currentPrincipalPaise & status atomically.
+     * and the CreditEntity's currentPrincipalPaise & status atomically without overwriting initial rate.
      */
     private suspend fun recalculateCreditTimelineInTransaction(creditId: String, now: Long) {
         val credit = db.creditDao().getById(creditId)?.toDomain() ?: return
         val events = db.creditEventDao().getByCreditId(creditId).map { it.toDomain() }
+        val lang = db.settingsDao().getSettings()?.toDomain()?.language ?: AppLanguage.HINDI
         val today = LedgerDate.todayLocal()
         val startDate = LedgerDate.parseOrNull(credit.startDate) ?: today
         val maxEventDate = events
@@ -708,15 +1001,75 @@ class LedgerRepository(
 
         val snapshot = InterestEngine.calculateCreditBalanceAsOfDate(credit, events, replayEndDate)
 
-        // Update stored snapshots on active events so history cards stay exact
+        // Update stored snapshots & regenerated system notes on active events so history stays exact
+        var runningRate = credit.interestRate
+        var runningRatePeriod = credit.ratePeriod
         snapshot.replayedEvents.forEach { state ->
-            val updatedEvent = state.event.copy(
+            val ev = state.event
+            if (ev.eventType == CreditEventType.CREDIT_CREATED && ev.rateAfter.isNotBlank()) {
+                runningRate = ev.rateAfter
+                runningRatePeriod = ev.ratePeriodAfter
+            }
+            val regeneratedSystemNote = when (ev.eventType) {
+                CreditEventType.CREDIT_PAYMENT -> {
+                    val payDate = LedgerDate.parseOrNull(ev.effectiveDate) ?: today
+                    val mode = ev.allocationMode ?: AllocationMode.PRINCIPAL_ADJUSTMENT
+                    val note = StatementTextGenerator.generateAutoPaymentNote(
+                        paymentAmountPaise = ev.amountPaise,
+                        paymentDate = payDate,
+                        principalBeforePaise = state.principalBeforePaise,
+                        interestBeforePaise = state.interestBeforePaise,
+                        misradhanBeforePaise = state.misradhanBeforePaise,
+                        allocationMode = mode,
+                        principalAfterPaise = state.principalAfterPaise,
+                        advancePaise = state.advancePaise,
+                        lang = lang
+                    )
+                    val linkedPayment = db.paymentDao().getById(ev.id)?.toDomain()
+                    if (linkedPayment != null) {
+                        db.paymentDao().upsert(
+                            linkedPayment.copy(systemNote = note, updatedAt = now).toEntity()
+                        )
+                    }
+                    note
+                }
+                CreditEventType.PRINCIPAL_ADJUSTMENT,
+                CreditEventType.INTEREST_RATE_UPDATE -> {
+                    val adj = db.adjustmentDao().getById(ev.id)?.toDomain()
+                    if (adj != null) {
+                        db.adjustmentDao().upsert(
+                            adj.copy(
+                                oldPrincipalPaise = state.principalBeforePaise,
+                                oldRate = runningRate,
+                                oldRatePeriod = runningRatePeriod,
+                                updatedAt = now
+                            ).toEntity()
+                        )
+                    }
+                    val note = "Terms updated: Principal ${IndianNumberFormatter.formatCompactCurrency(state.principalBeforePaise)} -> ${IndianNumberFormatter.formatCompactCurrency(state.principalAfterPaise)}, Rate ${ev.rateAfter}% (prev ${runningRate}%)"
+                    runningRate = ev.rateAfter
+                    runningRatePeriod = ev.ratePeriodAfter
+                    note
+                }
+                else -> ev.systemNote
+            }
+
+            val updatedAmountPaise = if (ev.eventType == CreditEventType.PRINCIPAL_ADJUSTMENT || ev.eventType == CreditEventType.INTEREST_RATE_UPDATE) {
+                kotlin.math.abs(state.principalAfterPaise - state.principalBeforePaise)
+            } else {
+                ev.amountPaise
+            }
+            val updatedEvent = ev.copy(
+                amountPaise = updatedAmountPaise,
                 principalBeforePaise = state.principalBeforePaise,
                 interestBeforePaise = state.interestBeforePaise,
                 misradhanBeforePaise = state.misradhanBeforePaise,
                 principalAfterPaise = state.principalAfterPaise,
                 interestAfterPaise = state.interestAfterPaise,
+                rateAfter = if (ev.eventType == CreditEventType.CREDIT_PAYMENT) runningRate else ev.rateAfter,
+                ratePeriodAfter = if (ev.eventType == CreditEventType.CREDIT_PAYMENT) runningRatePeriod else ev.ratePeriodAfter,
                 advancePaise = state.advancePaise,
+                systemNote = regeneratedSystemNote,
                 updatedAt = now
             )
             db.creditEventDao().upsert(updatedEvent.toEntity())
@@ -724,8 +1077,6 @@ class LedgerRepository(
 
         val updatedCredit = credit.copy(
             currentPrincipalPaise = snapshot.currentPrincipalPaise,
-            interestRate = snapshot.activeRate,
-            ratePeriod = snapshot.activeRatePeriod,
             status = snapshot.status,
             updatedAt = now
         )
